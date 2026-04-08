@@ -11,8 +11,8 @@ import * as path from 'path'
 
 import * as core from '@actions/core'
 
-import { loadDailyFiles } from '../report/loadDailyFiles.js'
-import { loadUserDailyFiles } from '../report/loadUserDailyFiles.js'
+import { loadDailyFiles } from '../loadDailyFiles.js'
+import { loadUserDailyFiles } from '../loadUserDailyFiles.js'
 
 interface UserFeatureEntry {
   login: string

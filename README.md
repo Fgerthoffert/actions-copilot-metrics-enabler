@@ -1,305 +1,171 @@
-# Create a GitHub Action Using TypeScript
+<!-- markdownlint-disable MD041 MD033 -->
+<p align="center">
+  <img alt="ZenCrepesLogo" src="docs/zencrepes-logo.png" height="140" />
+  <h2 align="center">Copilot Metrics Archiver</h2>
+    <p align="center">A GitHub Action that retrieves GitHub Copilot usage
+    metrics from the API, organizes them into daily JSON files, and generates
+    adoption reports in Markdown.</p>
+</p>
 
-![Linter](https://github.com/actions/typescript-action/actions/workflows/linter.yml/badge.svg)
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
-![Check dist/](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml/badge.svg)
-![CodeQL](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml/badge.svg)
+---
+
+![Linter](https://github.com/fgerthoffert/actions-copilot-metrics-archiver/actions/workflows/linter.yml/badge.svg)
+![CI](https://github.com/fgerthoffert/actions-copilot-metrics-archiver/actions/workflows/ci.yml/badge.svg)
+![Check dist/](https://github.com/fgerthoffert/actions-copilot-metrics-archiver/actions/workflows/check-dist.yml/badge.svg)
+![CodeQL](https://github.com/fgerthoffert/actions-copilot-metrics-archiver/actions/workflows/codeql-analysis.yml/badge.svg)
 ![Coverage](./badges/coverage.svg)
 
-Use this template to bootstrap the creation of a TypeScript action. :rocket:
+---
 
-This template includes compilation support, tests, a validation workflow,
-publishing, and versioning guidance.
+## What It Does
 
-If you are new, there's also a simpler introduction in the
-[Hello world JavaScript action repository](https://github.com/actions/hello-world-javascript-action).
+This action connects to the
+[GitHub Copilot Usage Metrics API](https://docs.github.com/en/copilot/reference/copilot-usage-metrics/copilot-usage-metrics)
+and archives the response as individual daily JSON files. Because the API only
+exposes a rolling 28-day window, running this action on a schedule lets you
+build a long-term historical archive.
 
-## Create Your Own Action
+When report generation is enabled, the action also runs an **ETL pipeline** that
+transforms the raw data into intermediate NDJSON files and produces a set of
+Markdown adoption reports.
 
-To create your own action, you can use this repository as a template! Just
-follow the below instructions:
+### Data Collection
 
-1. Click the **Use this template** button at the top of the repository
-1. Select **Create a new repository**
-1. Select an owner and name for your new repository
-1. Click **Create repository**
-1. Clone your new repository
+The action collects two types of metrics:
 
-> [!IMPORTANT]
->
-> Make sure to remove or update the [`CODEOWNERS`](./CODEOWNERS) file! For
-> details on how to use this file, see
-> [About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners).
+| Type             | API Endpoint                              | Storage Format                                     |
+| ---------------- | ----------------------------------------- | -------------------------------------------------- |
+| **Organization** | `GET /orgs/{org}/copilot/metrics` (1-day) | `source/organization/YYYY-MM-DD.json`              |
+| **Users**        | `GET /orgs/{org}/members/copilot` (1-day) | `source/users/YYYY-MM-DD/YYYY-MM-DD-username.json` |
 
-## Initial Setup
+On each run the action looks back up to `lookback_days` (default 100) and only
+fetches data for dates that are missing, so it is safe to run daily on a
+schedule without creating duplicates.
 
-After you've cloned the repository to your local machine or codespace, you'll
-need to perform some initial setup steps before you can develop your action.
+### Reports
 
-> [!NOTE]
->
-> You'll need to have a reasonably modern version of
-> [Node.js](https://nodejs.org) handy (20.x or later should work!). If you are
-> using a version manager like [`nodenv`](https://github.com/nodenv/nodenv) or
-> [`fnm`](https://github.com/Schniz/fnm), this template has a `.node-version`
-> file at the root of the repository that can be used to automatically switch to
-> the correct version when you `cd` into the repository. Additionally, this
-> `.node-version` file is used by GitHub Actions in any `actions/setup-node`
-> actions.
+When `summary_report` is set to `'true'`, the action generates the following
+Markdown reports inside the `report/` directory:
 
-1. :hammer_and_wrench: Install the dependencies
+| Report                    | File(s)                               | Description                                                                                     |
+| ------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **AI Adoption**           | `ai-adoption.md`                      | Daily active users and user-initiated interactions, monthly and daily, with active/inactive user lists |
+| **IDE Adoption**          | `ide-adoption.md`                     | User-initiated interactions broken down by IDE, monthly and daily                               |
+| **Feature Adoption**      | `feature-adoption.md`                 | Overview of interactions by feature (code completions, chat, etc.), monthly and daily            |
+| **Per-Feature Adoption**  | `feature-adoption-<feature>.md`       | One report per feature with user breakdowns (top/bottom 5, active users per day)                |
+| **Model Adoption**        | `model-adoption.md`                   | Overview of interactions by AI model with "Others" grouping (<5%), monthly and daily             |
+| **Per-Model Adoption**    | `model-adoption-<model>.md`           | One report per model with user breakdowns (top/bottom 5, active users per day)                  |
 
-   ```bash
-   npm install
-   ```
-
-1. :building_construction: Package the TypeScript for distribution
-
-   ```bash
-   npm run bundle
-   ```
-
-1. :white_check_mark: Run the tests
-
-   ```bash
-   $ npm test
-
-   PASS  ./index.test.js
-     ✓ throws invalid number (3ms)
-     ✓ wait 500 ms (504ms)
-     ✓ test runs (95ms)
-
-   ...
-   ```
-
-## Update the Action Metadata
-
-The [`action.yml`](action.yml) file defines metadata about your action, such as
-input(s) and output(s). For details about this file, see
-[Metadata syntax for GitHub Actions](https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions).
-
-When you copy this repository, update `action.yml` with the name, description,
-inputs, and outputs for your action.
-
-## Update the Action Code
-
-The [`src/`](./src/) directory is the heart of your action! This contains the
-source code that will be run when your action is invoked. You can replace the
-contents of this directory with your own code.
-
-There are a few things to keep in mind when writing your action code:
-
-- Most GitHub Actions toolkit and CI/CD operations are processed asynchronously.
-  In `main.ts`, you will see that the action is run in an `async` function.
-
-  ```javascript
-  import * as core from '@actions/core'
-  //...
-
-  async function run() {
-    try {
-      //...
-    } catch (error) {
-      core.setFailed(error.message)
-    }
-  }
-  ```
-
-  For more information about the GitHub Actions toolkit, see the
-  [documentation](https://github.com/actions/toolkit/blob/main/README.md).
-
-So, what are you waiting for? Go ahead and start customizing your action!
-
-1. Create a new branch
-
-   ```bash
-   git checkout -b releases/v1
-   ```
-
-1. Replace the contents of `src/` with your action code
-1. Add tests to `__tests__/` for your source code
-1. Format, test, and build the action
-
-   ```bash
-   npm run all
-   ```
-
-   > This step is important! It will run [`rollup`](https://rollupjs.org/) to
-   > build the final JavaScript action code with all dependencies included. If
-   > you do not run this step, your action will not work correctly when it is
-   > used in a workflow.
-
-1. (Optional) Test your action locally
-
-   The [`@github/local-action`](https://github.com/github/local-action) utility
-   can be used to test your action locally. It is a simple command-line tool
-   that "stubs" (or simulates) the GitHub Actions Toolkit. This way, you can run
-   your TypeScript action locally without having to commit and push your changes
-   to a repository.
-
-   The `local-action` utility can be run in the following ways:
-   - Visual Studio Code Debugger
-
-     Make sure to review and, if needed, update
-     [`.vscode/launch.json`](./.vscode/launch.json)
-
-   - Terminal/Command Prompt
-
-     ```bash
-     # npx @github/local action <action-yaml-path> <entrypoint> <dotenv-file>
-     npx @github/local-action . src/main.ts .env
-     ```
-
-   You can provide a `.env` file to the `local-action` CLI to set environment
-   variables used by the GitHub Actions Toolkit. For example, setting inputs and
-   event payload data used by your action. For more information, see the example
-   file, [`.env.example`](./.env.example), and the
-   [GitHub Actions Documentation](https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables).
-
-1. Commit your changes
-
-   ```bash
-   git add .
-   git commit -m "My first action is ready!"
-   ```
-
-1. Push them to your repository
-
-   ```bash
-   git push -u origin releases/v1
-   ```
-
-1. Create a pull request and get feedback on your action
-1. Merge the pull request into the `main` branch
-
-Your action is now published! :rocket:
-
-For information about versioning your action, see
-[Versioning](https://github.com/actions/toolkit/blob/main/docs/action-versioning.md)
-in the GitHub Actions toolkit.
-
-## Validate the Action
-
-You can now validate the action by referencing it in a workflow file. For
-example, [`ci.yml`](./.github/workflows/ci.yml) demonstrates how to reference an
-action in the same repository.
-
-```yaml
-steps:
-  - name: Checkout
-    id: checkout
-    uses: actions/checkout@v4
-
-  - name: Test Local Action
-    id: test-action
-    uses: ./
-    with:
-      milliseconds: 1000
-
-  - name: Print Output
-    id: output
-    run: echo "${{ steps.test-action.outputs.time }}"
-```
-
-For example workflow runs, check out the
-[Actions tab](https://github.com/actions/typescript-action/actions)! :rocket:
+A `README.md` index is generated alongside the reports with links to each file.
 
 ## Usage
 
-After testing, you can create version tag(s) that developers can use to
-reference different stable versions of your action. For more information, see
-[Versioning](https://github.com/actions/toolkit/blob/main/docs/action-versioning.md)
-in the GitHub Actions toolkit.
+### Inputs
 
-To include the action in a workflow in another repository, you can use the
-`uses` syntax with the `@` symbol to reference a specific branch, tag, or commit
-hash.
+| Input              | Required | Default | Description                                                                                      |
+| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------ |
+| `github_token`     | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics |
+| `github_org`       | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                             |
+| `path`             | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                  |
+| `summary_report`   | No       | `false` | Set to `'true'` to generate adoption reports                                                     |
+| `metrics`          | No       | `all`   | Comma-separated list of metric types to collect: `organization`, `users`, or `all`               |
+| `lookback_days`    | No       | `100`   | Number of days to look back in history for missing data                                          |
+
+### Outputs
+
+| Output | Description                                                             |
+| ------ | ----------------------------------------------------------------------- |
+| `path` | The path where data is stored (the provided `path` or a temp directory) |
+
+### Example Workflow
 
 ```yaml
-steps:
-  - name: Checkout
-    id: checkout
-    uses: actions/checkout@v4
+name: Archive Copilot Metrics
 
-  - name: Test Local Action
-    id: test-action
-    uses: actions/typescript-action@v1 # Commit with the `v1` tag
-    with:
-      milliseconds: 1000
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
-  - name: Print Output
-    id: output
-    run: echo "${{ steps.test-action.outputs.time }}"
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Collect Copilot Metrics
+        uses: fgerthoffert/actions-copilot-metrics-archiver@main
+        with:
+          github_token: ${{ secrets.COPILOT_METRICS_TOKEN }}
+          github_org: my-org
+          path: copilot-metrics
+          summary_report: 'true'
+          lookback_days: 100
+
+      - name: Commit and push metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add copilot-metrics/
+          git diff --cached --quiet || git commit -m "chore: update copilot metrics"
+          git push
 ```
 
-## Publishing a New Release
+### Directory Structure
 
-This project includes a helper script, [`script/release`](./script/release)
-designed to streamline the process of tagging and pushing new releases for
-GitHub Actions.
+After running with `path: copilot-metrics`, the directory tree looks like:
 
-GitHub Actions allows users to select a specific version of the action to use,
-based on release tags. This script simplifies this process by performing the
-following steps:
-
-1. **Retrieving the latest release tag:** The script starts by fetching the most
-   recent SemVer release tag of the current branch, by looking at the local data
-   available in your repository.
-1. **Prompting for a new release tag:** The user is then prompted to enter a new
-   release tag. To assist with this, the script displays the tag retrieved in
-   the previous step, and validates the format of the inputted tag (vX.X.X). The
-   user is also reminded to update the version field in package.json.
-1. **Tagging the new release:** The script then tags a new release and syncs the
-   separate major tag (e.g. v1, v2) with the new release tag (e.g. v1.0.0,
-   v2.1.2). When the user is creating a new major release, the script
-   auto-detects this and creates a `releases/v#` branch for the previous major
-   version.
-1. **Pushing changes to remote:** Finally, the script pushes the necessary
-   commits, tags and branches to the remote repository. From here, you will need
-   to create a new release in GitHub so users can easily reference the new tags
-   in their workflows.
-
-## Dependency License Management
-
-This template includes a GitHub Actions workflow,
-[`licensed.yml`](./.github/workflows/licensed.yml), that uses
-[Licensed](https://github.com/licensee/licensed) to check for dependencies with
-missing or non-compliant licenses. This workflow is initially disabled. To
-enable the workflow, follow the below steps.
-
-1. Open [`licensed.yml`](./.github/workflows/licensed.yml)
-1. Uncomment the following lines:
-
-   ```yaml
-   # pull_request:
-   #   branches:
-   #     - main
-   # push:
-   #   branches:
-   #     - main
-   ```
-
-1. Save and commit the changes
-
-Once complete, this workflow will run any time a pull request is created or
-changes pushed directly to `main`. If the workflow detects any dependencies with
-missing or non-compliant licenses, it will fail the workflow and provide details
-on the issue(s) found.
-
-### Updating Licenses
-
-Whenever you install or update dependencies, you can use the Licensed CLI to
-update the licenses database. To install Licensed, see the project's
-[Readme](https://github.com/licensee/licensed?tab=readme-ov-file#installation).
-
-To update the cached licenses, run the following command:
-
-```bash
-licensed cache
+```
+copilot-metrics/
+├── source/
+│   ├── organization/
+│   │   ├── 2026-04-01.json
+│   │   ├── 2026-04-02.json
+│   │   └── ...
+│   └── users/
+│       ├── 2026-04-01/
+│       │   ├── 2026-04-01-alice.json
+│       │   └── 2026-04-01-bob.json
+│       └── ...
+├── transform/
+│   └── organization/
+│       ├── ide-interactions.ndjson
+│       ├── feature-interactions.ndjson
+│       ├── feature-adoption.ndjson
+│       ├── model-adoption.ndjson
+│       └── daily-usage.ndjson
+└── report/
+    ├── README.md
+    ├── ai-adoption.md
+    ├── ide-adoption.md
+    ├── feature-adoption.md
+    ├── feature-adoption-code-completions.md
+    ├── model-adoption.md
+    ├── model-adoption-gpt-4o.md
+    └── ...
 ```
 
-To check the status of cached licenses, run the following command:
+## License
 
-```bash
-licensed status
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
+for details.
+
+## How to Contribute
+
+- Fork the repository
+- Run `npm install`
+- Rename `.env.example` to `.env`
+- Update the `INPUT_` variables
+- Make your changes
+- Run `npx local-action . src/main.ts .env`
+- Run `npm run bundle`
+- Run `npm test`
+- Submit a PR to this repository, detailing your changes
+
+More details about GitHub TypeScript actions are
+[available here](https://github.com/actions/typescript-action)

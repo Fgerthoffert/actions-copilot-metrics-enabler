@@ -6,8 +6,7 @@ import { getConnectedUser } from './utils/github/getConnectedUser.js'
 import { fetchMissingOrganizationMetrics } from './utils/fetchMissingOrganizationMetrics.js'
 import { fetchMissingUsersMetrics } from './utils/fetchMissingUsersMetrics.js'
 import { getCacheDirectory } from './utils/getCacheDirectory.js'
-import { generateSummaryReport } from './utils/report/generateSummaryReport.js'
-import { generateReportsV2 } from './utils/reportv2/generateReportsV2.js'
+import { generateReports } from './utils/report/generateReports.js'
 
 const METRICS_TYPES = ['organization', 'users'] as const
 type MetricType = (typeof METRICS_TYPES)[number]
@@ -78,12 +77,7 @@ export async function run(): Promise<void> {
     }
 
     if (inputSummaryReport === 'true') {
-      for (const report of activeMetrics) {
-        const metricsPath = path.join(storePath, 'source', report)
-        await generateSummaryReport(metricsPath, storePath, report)
-      }
-
-      await generateReportsV2(storePath)
+      await generateReports(storePath)
     }
 
     core.setOutput('path', storePath)

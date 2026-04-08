@@ -10,7 +10,7 @@ import * as path from 'path'
 
 import * as core from '@actions/core'
 
-import type { ReportFile } from '../report/writeReportFiles.js'
+import type { ReportFile } from './writeReportFiles.js'
 
 interface UserFeatureEntry {
   login: string

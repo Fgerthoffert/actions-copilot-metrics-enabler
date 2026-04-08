@@ -1,5 +1,5 @@
 /**
- * Orchestrates the v2 report pipeline:
+ * Orchestrates the report pipeline:
  * 1. Run transforms on source data to produce intermediate NDJSON files
  * 2. Generate reports from the transformed data
  */
@@ -19,13 +19,13 @@ import { generatePerFeatureAdoptionReport } from './generatePerFeatureAdoptionRe
 import { generateModelAdoptionReport } from './generateModelAdoptionReport.js'
 import { generatePerModelAdoptionReport } from './generatePerModelAdoptionReport.js'
 import { generateDailyUsageReport } from './generateDailyUsageReport.js'
-import { writeReportFiles } from '../report/writeReportFiles.js'
-import type { ReportFile } from '../report/writeReportFiles.js'
+import { writeReportFiles } from './writeReportFiles.js'
+import type { ReportFile } from './writeReportFiles.js'
 
-export const generateReportsV2 = async (
+export const generateReports = async (
   storePath: string
 ): Promise<void> => {
-  core.info('Running ETL pipeline for v2 reports')
+  core.info('Running ETL pipeline for reports')
 
   const orgSourcePath = path.join(storePath, 'source', 'organization')
   const orgTransformPath = path.join(storePath, 'transform', 'organization')
@@ -48,7 +48,7 @@ export const generateReportsV2 = async (
   reportFiles.push(...generatePerModelAdoptionReport(orgTransformPath))
 
   if (reportFiles.length === 0) {
-    core.info('No v2 report content generated')
+    core.info('No report content generated')
     return
   }
 
@@ -65,6 +65,6 @@ export const generateReportsV2 = async (
 
   reportFiles.unshift({ filename: 'README.md', content: readme })
 
-  const reportsPath = path.join(storePath, 'reportv2')
+  const reportsPath = path.join(storePath, 'report')
   await writeReportFiles(reportsPath, reportFiles)
 }

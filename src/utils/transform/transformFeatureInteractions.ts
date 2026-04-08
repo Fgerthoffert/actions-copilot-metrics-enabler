@@ -9,7 +9,7 @@ import * as path from 'path'
 
 import * as core from '@actions/core'
 
-import { loadDailyFiles } from '../report/loadDailyFiles.js'
+import { loadDailyFiles } from '../loadDailyFiles.js'
 
 interface FeatureInteractionEntry {
   feature: string
