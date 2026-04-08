@@ -120,7 +120,7 @@ jobs:
 
 After running with `path: copilot-metrics`, the directory tree looks like:
 
-```
+```text
 copilot-metrics/
 ├── source/
 │   ├── organization/
