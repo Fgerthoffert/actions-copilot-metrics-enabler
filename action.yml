@@ -1,6 +1,7 @@
 name: Copilot Metrics Archiver
 description:
-  A GitHub Action that retrieves GitHub Copilot usage metrics from the API and organizes them into daily JSON files and generate an adoption report.
+  A GitHub Action that retrieves GitHub Copilot usage metrics from the API and
+  organizes them into daily JSON files and generate an adoption report.
 author: Francois Gerthoffert
 
 branding:
@@ -16,18 +17,21 @@ inputs:
     description: GitHub organization to fetch Copilot metrics for
     required: true
   path:
-    description: Local path where previous JSON files are stored and where new ones. If none provided, a temporary directory will be used and passed as output.
+    description:
+      Local path where previous JSON files are stored and where new ones. If
+      none provided, a temporary directory will be used and passed as output.
     default: ''
     required: false
   summary_report:
-    description: Set to 'true' to generate a summary report in the GitHub Actions job summary.
+    description:
+      Set to 'true' to generate a summary report in the GitHub Actions job
+      summary.
     default: 'false'
     required: false
   metrics:
     description: >-
-      Comma-separated list of report types to collect.
-      Valid values: organization, users, all.
-      Each report type is stored in its own subfolder.
+      Comma-separated list of report types to collect. Valid values:
+      organization, users, all. Each report type is stored in its own subfolder.
     default: 'all'
     required: false
   lookback_days:
@@ -38,7 +42,9 @@ inputs:
 # Define your outputs here.
 outputs:
   path:
-    description: The path where JSON files are stored or a temporary directory if none was provided.
+    description:
+      The path where JSON files are stored or a temporary directory if none was
+      provided.
 
 runs:
   using: node24

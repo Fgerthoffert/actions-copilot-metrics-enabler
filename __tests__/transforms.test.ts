@@ -7,21 +7,16 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { transformIdeInteractions } = await import(
-  '../src/utils/transform/transformIdeInteractions.js'
-)
-const { transformFeatureInteractions } = await import(
-  '../src/utils/transform/transformFeatureInteractions.js'
-)
-const { transformDailyUsage } = await import(
-  '../src/utils/transform/transformDailyUsage.js'
-)
-const { transformFeatureAdoption } = await import(
-  '../src/utils/transform/transformFeatureAdoption.js'
-)
-const { transformModelAdoption } = await import(
-  '../src/utils/transform/transformModelAdoption.js'
-)
+const { transformIdeInteractions } =
+  await import('../src/utils/transform/transformIdeInteractions.js')
+const { transformFeatureInteractions } =
+  await import('../src/utils/transform/transformFeatureInteractions.js')
+const { transformDailyUsage } =
+  await import('../src/utils/transform/transformDailyUsage.js')
+const { transformFeatureAdoption } =
+  await import('../src/utils/transform/transformFeatureAdoption.js')
+const { transformModelAdoption } =
+  await import('../src/utils/transform/transformModelAdoption.js')
 
 /** Helper to create org source data */
 const writeOrgDay = (dir: string, day: string, data: object) => {
@@ -70,9 +65,7 @@ describe('transformIdeInteractions', () => {
       ]
     })
     writeOrgDay(srcDir, '2026-04-02', {
-      totals_by_ide: [
-        { ide: 'vscode', user_initiated_interaction_count: 120 }
-      ]
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 120 }]
     })
 
     transformIdeInteractions(srcDir, outDir)
@@ -280,9 +273,9 @@ describe('transformFeatureAdoption', () => {
 
   it('Skips with empty source', () => {
     transformFeatureAdoption(srcDir, outDir, usersDir)
-    expect(
-      fs.existsSync(path.join(outDir, 'feature-adoption.ndjson'))
-    ).toBe(false)
+    expect(fs.existsSync(path.join(outDir, 'feature-adoption.ndjson'))).toBe(
+      false
+    )
   })
 })
 
@@ -355,8 +348,8 @@ describe('transformModelAdoption', () => {
 
   it('Skips with empty source', () => {
     transformModelAdoption(srcDir, outDir, usersDir)
-    expect(
-      fs.existsSync(path.join(outDir, 'model-adoption.ndjson'))
-    ).toBe(false)
+    expect(fs.existsSync(path.join(outDir, 'model-adoption.ndjson'))).toBe(
+      false
+    )
   })
 })

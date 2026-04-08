@@ -22,9 +22,7 @@ import { generateDailyUsageReport } from './generateDailyUsageReport.js'
 import { writeReportFiles } from './writeReportFiles.js'
 import type { ReportFile } from './writeReportFiles.js'
 
-export const generateReports = async (
-  storePath: string
-): Promise<void> => {
+export const generateReports = async (storePath: string): Promise<void> => {
   core.info('Running ETL pipeline for reports')
 
   const orgSourcePath = path.join(storePath, 'source', 'organization')

@@ -47,14 +47,14 @@ schedule without creating duplicates.
 When `summary_report` is set to `'true'`, the action generates the following
 Markdown reports inside the `report/` directory:
 
-| Report                    | File(s)                               | Description                                                                                     |
-| ------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **AI Adoption**           | `ai-adoption.md`                      | Daily active users and user-initiated interactions, monthly and daily, with active/inactive user lists |
-| **IDE Adoption**          | `ide-adoption.md`                     | User-initiated interactions broken down by IDE, monthly and daily                               |
-| **Feature Adoption**      | `feature-adoption.md`                 | Overview of interactions by feature (code completions, chat, etc.), monthly and daily            |
-| **Per-Feature Adoption**  | `feature-adoption-<feature>.md`       | One report per feature with user breakdowns (top/bottom 5, active users per day)                |
-| **Model Adoption**        | `model-adoption.md`                   | Overview of interactions by AI model with "Others" grouping (<5%), monthly and daily             |
-| **Per-Model Adoption**    | `model-adoption-<model>.md`           | One report per model with user breakdowns (top/bottom 5, active users per day)                  |
+| Report                   | File(s)                         | Description                                                                                            |
+| ------------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **AI Adoption**          | `ai-adoption.md`                | Daily active users and user-initiated interactions, monthly and daily, with active/inactive user lists |
+| **IDE Adoption**         | `ide-adoption.md`               | User-initiated interactions broken down by IDE, monthly and daily                                      |
+| **Feature Adoption**     | `feature-adoption.md`           | Overview of interactions by feature (code completions, chat, etc.), monthly and daily                  |
+| **Per-Feature Adoption** | `feature-adoption-<feature>.md` | One report per feature with user breakdowns (top/bottom 5, active users per day)                       |
+| **Model Adoption**       | `model-adoption.md`             | Overview of interactions by AI model with "Others" grouping (<5%), monthly and daily                   |
+| **Per-Model Adoption**   | `model-adoption-<model>.md`     | One report per model with user breakdowns (top/bottom 5, active users per day)                         |
 
 A `README.md` index is generated alongside the reports with links to each file.
 
@@ -62,14 +62,14 @@ A `README.md` index is generated alongside the reports with links to each file.
 
 ### Inputs
 
-| Input              | Required | Default | Description                                                                                      |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------ |
-| `github_token`     | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics |
-| `github_org`       | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                             |
-| `path`             | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                  |
-| `summary_report`   | No       | `false` | Set to `'true'` to generate adoption reports                                                     |
-| `metrics`          | No       | `all`   | Comma-separated list of metric types to collect: `organization`, `users`, or `all`               |
-| `lookback_days`    | No       | `100`   | Number of days to look back in history for missing data                                          |
+| Input            | Required | Default | Description                                                                                                                  |
+| ---------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `github_token`   | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics |
+| `github_org`     | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                                                         |
+| `path`           | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                                             |
+| `summary_report` | No       | `false` | Set to `'true'` to generate adoption reports                                                                                 |
+| `metrics`        | No       | `all`   | Comma-separated list of metric types to collect: `organization`, `users`, or `all`                                           |
+| `lookback_days`  | No       | `100`   | Number of days to look back in history for missing data                                                                      |
 
 ### Outputs
 

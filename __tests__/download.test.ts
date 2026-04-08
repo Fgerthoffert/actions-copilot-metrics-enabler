@@ -4,12 +4,10 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { downloadReportContent } = await import(
-  '../src/utils/downloadReportContent.js'
-)
-const { downloadNdjsonContent } = await import(
-  '../src/utils/downloadNdjsonContent.js'
-)
+const { downloadReportContent } =
+  await import('../src/utils/downloadReportContent.js')
+const { downloadNdjsonContent } =
+  await import('../src/utils/downloadNdjsonContent.js')
 
 describe('downloadReportContent', () => {
   const originalFetch = globalThis.fetch
@@ -25,9 +23,7 @@ describe('downloadReportContent', () => {
       json: async () => ({ day: '2026-04-01', total: 100 })
     } as Response)
 
-    const result = await downloadReportContent([
-      'https://example.com/report1'
-    ])
+    const result = await downloadReportContent(['https://example.com/report1'])
     expect(result.length).toBe(1)
     expect(result[0].day).toBe('2026-04-01')
   })
@@ -61,9 +57,7 @@ describe('downloadNdjsonContent', () => {
       text: async () => ndjson
     } as Response)
 
-    const result = await downloadNdjsonContent([
-      'https://example.com/users'
-    ])
+    const result = await downloadNdjsonContent(['https://example.com/users'])
     expect(result.length).toBe(2)
     expect(result[0].user_login).toBe('alice')
     expect(result[1].user_login).toBe('bob')

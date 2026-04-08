@@ -7,9 +7,8 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { saveUserDailyMetrics } = await import(
-  '../src/utils/saveUserDailyMetrics.js'
-)
+const { saveUserDailyMetrics } =
+  await import('../src/utils/saveUserDailyMetrics.js')
 
 describe('saveUserDailyMetrics', () => {
   let tmpDir: string
@@ -31,18 +30,12 @@ describe('saveUserDailyMetrics', () => {
 
     const dayDir = path.join(tmpDir, '2026-04-01')
     expect(fs.existsSync(dayDir)).toBe(true)
-    expect(
-      fs.existsSync(path.join(dayDir, '2026-04-01-alice.json'))
-    ).toBe(true)
-    expect(
-      fs.existsSync(path.join(dayDir, '2026-04-01-bob.json'))
-    ).toBe(true)
+    expect(fs.existsSync(path.join(dayDir, '2026-04-01-alice.json'))).toBe(true)
+    expect(fs.existsSync(path.join(dayDir, '2026-04-01-bob.json'))).toBe(true)
   })
 
   it('Skips records without user_login', async () => {
-    await saveUserDailyMetrics(tmpDir, '2026-04-01', [
-      { day: '2026-04-01' }
-    ])
+    await saveUserDailyMetrics(tmpDir, '2026-04-01', [{ day: '2026-04-01' }])
 
     const dayDir = path.join(tmpDir, '2026-04-01')
     const files = fs.existsSync(dayDir)

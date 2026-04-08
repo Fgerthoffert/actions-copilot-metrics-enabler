@@ -122,9 +122,7 @@ export const generatePerModelAdoptionReport = (
       const data = monthData.get(month)!
       const pct =
         data.totalInteractions > 0
-          ? Math.round(
-              (data.modelInteractions / data.totalInteractions) * 100
-            )
+          ? Math.round((data.modelInteractions / data.totalInteractions) * 100)
           : 0
 
       const sorted = [...data.userTotals.entries()]
@@ -151,15 +149,11 @@ export const generatePerModelAdoptionReport = (
       const modelInteractions = modelEntry?.interactions || 0
       const pct =
         day.total_interactions > 0
-          ? Math.round(
-              (modelInteractions / day.total_interactions) * 100
-            )
+          ? Math.round((modelInteractions / day.total_interactions) * 100)
           : 0
 
       const activeUsers = modelEntry
-        ? modelEntry.users
-            .filter((u) => u.interactions > 0)
-            .map((u) => u.login)
+        ? modelEntry.users.filter((u) => u.interactions > 0).map((u) => u.login)
         : []
 
       markdown += `| ${day.day} | ${modelInteractions} | ${day.total_interactions} | ${pct}% | ${activeUsers.join(', ')} |\n`

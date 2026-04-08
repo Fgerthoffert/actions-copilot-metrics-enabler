@@ -7,9 +7,8 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { generateReports } = await import(
-  '../src/utils/report/generateReports.js'
-)
+const { generateReports } =
+  await import('../src/utils/report/generateReports.js')
 
 /** Helper to write an org source file */
 const writeOrgDay = (dir: string, day: string, data: object) => {

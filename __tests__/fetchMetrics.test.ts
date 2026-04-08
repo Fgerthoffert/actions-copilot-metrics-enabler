@@ -44,10 +44,9 @@ jest.unstable_mockModule('../src/utils/downloadReportContent.js', () => ({
 jest.unstable_mockModule('../src/utils/saveDailyMetrics.js', () => ({
   saveDailyMetrics
 }))
-jest.unstable_mockModule(
-  '../src/utils/getExistingUserDailyDates.js',
-  () => ({ getExistingUserDailyDates })
-)
+jest.unstable_mockModule('../src/utils/getExistingUserDailyDates.js', () => ({
+  getExistingUserDailyDates
+}))
 jest.unstable_mockModule('../src/utils/github/getUsersMetrics.js', () => ({
   getUsersMetrics
 }))
@@ -58,12 +57,10 @@ jest.unstable_mockModule('../src/utils/saveUserDailyMetrics.js', () => ({
   saveUserDailyMetrics
 }))
 
-const { fetchMissingOrganizationMetrics } = await import(
-  '../src/utils/fetchMissingOrganizationMetrics.js'
-)
-const { fetchMissingUsersMetrics } = await import(
-  '../src/utils/fetchMissingUsersMetrics.js'
-)
+const { fetchMissingOrganizationMetrics } =
+  await import('../src/utils/fetchMissingOrganizationMetrics.js')
+const { fetchMissingUsersMetrics } =
+  await import('../src/utils/fetchMissingUsersMetrics.js')
 
 describe('fetchMissingOrganizationMetrics', () => {
   afterEach(() => {

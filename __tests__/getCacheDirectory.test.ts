@@ -6,9 +6,7 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { getCacheDirectory } = await import(
-  '../src/utils/getCacheDirectory.js'
-)
+const { getCacheDirectory } = await import('../src/utils/getCacheDirectory.js')
 
 describe('getCacheDirectory', () => {
   afterEach(() => {

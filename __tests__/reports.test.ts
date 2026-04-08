@@ -7,27 +7,20 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { generateIdeAdoptionReport } = await import(
-  '../src/utils/report/generateIdeAdoptionReport.js'
-)
-const { generateFeatureAdoptionReport } = await import(
-  '../src/utils/report/generateFeatureAdoptionReport.js'
-)
-const { generatePerFeatureAdoptionReport } = await import(
-  '../src/utils/report/generatePerFeatureAdoptionReport.js'
-)
-const { generateModelAdoptionReport } = await import(
-  '../src/utils/report/generateModelAdoptionReport.js'
-)
-const { generatePerModelAdoptionReport } = await import(
-  '../src/utils/report/generatePerModelAdoptionReport.js'
-)
-const { generateDailyUsageReport } = await import(
-  '../src/utils/report/generateDailyUsageReport.js'
-)
-const { writeReportFiles } = await import(
-  '../src/utils/report/writeReportFiles.js'
-)
+const { generateIdeAdoptionReport } =
+  await import('../src/utils/report/generateIdeAdoptionReport.js')
+const { generateFeatureAdoptionReport } =
+  await import('../src/utils/report/generateFeatureAdoptionReport.js')
+const { generatePerFeatureAdoptionReport } =
+  await import('../src/utils/report/generatePerFeatureAdoptionReport.js')
+const { generateModelAdoptionReport } =
+  await import('../src/utils/report/generateModelAdoptionReport.js')
+const { generatePerModelAdoptionReport } =
+  await import('../src/utils/report/generatePerModelAdoptionReport.js')
+const { generateDailyUsageReport } =
+  await import('../src/utils/report/generateDailyUsageReport.js')
+const { writeReportFiles } =
+  await import('../src/utils/report/writeReportFiles.js')
 
 /** Write an NDJSON file from an array of objects */
 const writeNdjson = (dir: string, filename: string, records: object[]) => {
@@ -167,9 +160,7 @@ describe('generatePerFeatureAdoptionReport', () => {
     const result = generatePerFeatureAdoptionReport(tmpDir)
     expect(result.length).toBe(2)
 
-    const chatReport = result.find((r) =>
-      r.filename.includes('chat')
-    )
+    const chatReport = result.find((r) => r.filename.includes('chat'))
     expect(chatReport).toBeDefined()
     expect(chatReport!.content).toContain('alice')
     expect(chatReport!.content).toContain('bob')
@@ -376,16 +367,14 @@ describe('writeReportFiles', () => {
 
     expect(fs.existsSync(path.join(reportsDir, 'README.md'))).toBe(true)
     expect(fs.existsSync(path.join(reportsDir, 'report.md'))).toBe(true)
-    expect(
-      fs.readFileSync(path.join(reportsDir, 'report.md'), 'utf-8')
-    ).toBe('# Report')
+    expect(fs.readFileSync(path.join(reportsDir, 'report.md'), 'utf-8')).toBe(
+      '# Report'
+    )
   })
 
   it('Creates directory if it does not exist', async () => {
     const nested = path.join(tmpDir, 'a', 'b', 'c')
-    await writeReportFiles(nested, [
-      { filename: 'test.md', content: 'hello' }
-    ])
+    await writeReportFiles(nested, [{ filename: 'test.md', content: 'hello' }])
     expect(fs.existsSync(path.join(nested, 'test.md'))).toBe(true)
   })
 })

@@ -55,7 +55,5 @@ export const transformIdeInteractions = (
   const ndjson = transformed.map((entry) => JSON.stringify(entry)).join('\n')
   fs.writeFileSync(outputFile, ndjson, 'utf-8')
 
-  core.info(
-    `Wrote ${transformed.length} day(s) to ${outputFile}`
-  )
+  core.info(`Wrote ${transformed.length} day(s) to ${outputFile}`)
 }

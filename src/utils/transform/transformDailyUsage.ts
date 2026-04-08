@@ -30,7 +30,9 @@ export const transformDailyUsage = (
   const dailyFiles = loadDailyFiles(sourcePath)
 
   if (dailyFiles.length === 0) {
-    core.info('No organization source files found, skipping daily usage transform')
+    core.info(
+      'No organization source files found, skipping daily usage transform'
+    )
     return
   }
 

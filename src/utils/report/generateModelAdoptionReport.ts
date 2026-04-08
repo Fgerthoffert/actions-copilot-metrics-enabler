@@ -70,9 +70,7 @@ export const generateModelAdoptionReport = (
   const days = loadTransformFile(transformPath)
 
   if (days.length === 0) {
-    core.info(
-      'No model adoption data found, skipping model adoption report'
-    )
+    core.info('No model adoption data found, skipping model adoption report')
     return []
   }
 

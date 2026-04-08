@@ -20,9 +20,7 @@ interface FeatureInteractionDay {
   totals_by_feature: FeatureInteractionEntry[]
 }
 
-const loadTransformFile = (
-  transformPath: string
-): FeatureInteractionDay[] => {
+const loadTransformFile = (transformPath: string): FeatureInteractionDay[] => {
   const filePath = path.join(transformPath, 'feature-interactions.ndjson')
   if (!fs.existsSync(filePath)) return []
 
@@ -116,8 +114,11 @@ export const generateFeatureAdoptionReport = (
 
   // Monthly table
   markdown += `## Monthly\n\n`
-  markdown += renderTable('Month', months, features, (month) =>
-    monthMap.get(month)!
+  markdown += renderTable(
+    'Month',
+    months,
+    features,
+    (month) => monthMap.get(month)!
   )
 
   // Daily table

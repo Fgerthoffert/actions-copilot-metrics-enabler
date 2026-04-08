@@ -29,9 +29,7 @@ interface FeatureAdoptionDay {
   features: FeatureAdoptionEntry[]
 }
 
-const loadTransformFile = (
-  transformPath: string
-): FeatureAdoptionDay[] => {
+const loadTransformFile = (transformPath: string): FeatureAdoptionDay[] => {
   const filePath = path.join(transformPath, 'feature-adoption.ndjson')
   if (!fs.existsSync(filePath)) return []
 
@@ -153,9 +151,7 @@ export const generatePerFeatureAdoptionReport = (
       const featureInteractions = featureEntry?.interactions || 0
       const pct =
         day.total_interactions > 0
-          ? Math.round(
-              (featureInteractions / day.total_interactions) * 100
-            )
+          ? Math.round((featureInteractions / day.total_interactions) * 100)
           : 0
 
       const activeUsers = featureEntry

@@ -8,9 +8,8 @@ import * as core from '../__fixtures__/core.js'
 jest.unstable_mockModule('@actions/core', () => core)
 
 const { loadDailyFiles } = await import('../src/utils/loadDailyFiles.js')
-const { loadUserDailyFiles } = await import(
-  '../src/utils/loadUserDailyFiles.js'
-)
+const { loadUserDailyFiles } =
+  await import('../src/utils/loadUserDailyFiles.js')
 
 describe('loadDailyFiles', () => {
   let tmpDir: string

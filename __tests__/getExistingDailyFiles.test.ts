@@ -7,9 +7,8 @@ import * as core from '../__fixtures__/core.js'
 
 jest.unstable_mockModule('@actions/core', () => core)
 
-const { getExistingDailyFiles } = await import(
-  '../src/utils/getExistingDailyFiles.js'
-)
+const { getExistingDailyFiles } =
+  await import('../src/utils/getExistingDailyFiles.js')
 
 describe('getExistingDailyFiles', () => {
   let tmpDir: string

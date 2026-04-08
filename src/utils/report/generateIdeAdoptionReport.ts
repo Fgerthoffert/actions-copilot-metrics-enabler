@@ -79,7 +79,12 @@ export const generateIdeAdoptionReport = (
 
   // Monthly table
   markdown += `## Monthly\n\n`
-  markdown += renderTable('Month', months, ides, (month) => monthMap.get(month)!)
+  markdown += renderTable(
+    'Month',
+    months,
+    ides,
+    (month) => monthMap.get(month)!
+  )
 
   // Daily table
   markdown += `## Daily\n\n`

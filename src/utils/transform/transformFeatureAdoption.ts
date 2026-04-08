@@ -47,10 +47,7 @@ export const transformFeatureAdoption = (
 
   // Build day → feature → user → interactions from users source
   const userFiles = loadUserDailyFiles(usersSourcePath)
-  const dayFeatureUsers = new Map<
-    string,
-    Map<string, Map<string, number>>
-  >()
+  const dayFeatureUsers = new Map<string, Map<string, Map<string, number>>>()
 
   for (const file of userFiles) {
     const day = file.day as string

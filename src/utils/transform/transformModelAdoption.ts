@@ -48,10 +48,7 @@ export const transformModelAdoption = (
 
   // Build day → model → user → interactions from users source
   const userFiles = loadUserDailyFiles(usersSourcePath)
-  const dayModelUsers = new Map<
-    string,
-    Map<string, Map<string, number>>
-  >()
+  const dayModelUsers = new Map<string, Map<string, Map<string, number>>>()
 
   for (const file of userFiles) {
     const day = file.day as string

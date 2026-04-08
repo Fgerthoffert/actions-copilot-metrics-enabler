@@ -31,12 +31,9 @@ jest.unstable_mockModule('../src/utils/fetchMissingUsersMetrics.js', () => ({
 jest.unstable_mockModule('../src/utils/getCacheDirectory.js', () => ({
   getCacheDirectory
 }))
-jest.unstable_mockModule(
-  '../src/utils/report/generateReports.js',
-  () => ({
-    generateReports
-  })
-)
+jest.unstable_mockModule('../src/utils/report/generateReports.js', () => ({
+  generateReports
+}))
 
 // The module being tested should be imported dynamically. This ensures that the
 // mocks are used in place of any actual dependencies.
