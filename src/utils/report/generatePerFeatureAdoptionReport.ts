@@ -40,6 +40,36 @@ const loadTransformFile = (transformPath: string): FeatureAdoptionDay[] => {
     .map((line) => JSON.parse(line) as FeatureAdoptionDay)
 }
 
+const getISOWeek = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00Z')
+  const dayOfWeek = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  )
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
+const FEATURE_DESCRIPTIONS: Record<string, string> = {
+  chat_panel_agent_mode:
+    'User-initiated interactions in the chat panel with agent mode selected.',
+  chat_panel_ask_mode:
+    'User-initiated interactions in the chat panel with ask mode selected.',
+  chat_panel_custom_mode:
+    'User-initiated interactions in the chat panel with a custom agent selected.',
+  chat_panel_edit_mode:
+    'User-initiated interactions in the chat panel with edit mode selected.',
+  chat_panel_plan_mode:
+    'User-initiated interactions in the chat panel with plan mode selected.',
+  chat_panel_unknown_mode:
+    'User-initiated interactions in the chat panel where the mode is unknown.',
+  chat_inline: 'User-initiated interactions using inline chat in the editor.',
+  code_completion: 'Inline code completion suggestions.',
+  agent_edit:
+    'Lines added and deleted when Copilot (in agent and edit mode) writes changes directly into files. Not included in suggestion-based metrics.'
+}
+
 export const generatePerFeatureAdoptionReport = (
   transformPath: string
 ): ReportFile[] => {
@@ -74,6 +104,10 @@ export const generatePerFeatureAdoptionReport = (
   for (const feature of features) {
     let markdown = `# Per Feature Adoption — ${feature}\n\n`
     markdown += `[← Back to Index](README.md)\n\n`
+    const desc = FEATURE_DESCRIPTIONS[feature]
+    if (desc) {
+      markdown += `> ${desc}\n\n`
+    }
 
     // Monthly aggregation
     const monthData = new Map<
@@ -141,26 +175,57 @@ export const generatePerFeatureAdoptionReport = (
     }
     markdown += '\n'
 
-    // Daily table
-    markdown += `## Daily\n\n`
-    markdown += `| Date | Feature Interactions | Total Interactions | % of Total | Active Users |\n`
-    markdown += `| --- | --- | --- | --- | --- |\n`
+    // Weekly table
+    const weekData = new Map<
+      string,
+      {
+        featureInteractions: number
+        totalInteractions: number
+        activeUsers: Set<string>
+      }
+    >()
 
     for (const day of days) {
+      const week = getISOWeek(day.day)
+      const existing = weekData.get(week) || {
+        featureInteractions: 0,
+        totalInteractions: 0,
+        activeUsers: new Set<string>()
+      }
+
       const featureEntry = day.features.find((f) => f.feature === feature)
-      const featureInteractions = featureEntry?.interactions || 0
+      existing.featureInteractions += featureEntry?.interactions || 0
+      existing.totalInteractions += day.total_interactions
+
+      if (featureEntry) {
+        for (const u of featureEntry.users) {
+          if (u.interactions > 0) existing.activeUsers.add(u.login)
+        }
+      }
+
+      weekData.set(week, existing)
+    }
+
+    const weeks = [...weekData.keys()].sort().reverse()
+
+    markdown += `## Weekly\n\n`
+    markdown += `| Week | Feature Interactions | Total Interactions | % of Total | Active Users |\n`
+    markdown += `| --- | --- | --- | --- | --- |\n`
+
+    for (const week of weeks) {
+      const data = weekData.get(week)!
       const pct =
-        day.total_interactions > 0
-          ? Math.round((featureInteractions / day.total_interactions) * 100)
+        data.totalInteractions > 0
+          ? Math.round(
+              (data.featureInteractions / data.totalInteractions) * 100
+            )
           : 0
 
-      const activeUsers = featureEntry
-        ? featureEntry.users
-            .filter((u) => u.interactions > 0)
-            .map((u) => u.login)
-        : []
+      const activeList = [...data.activeUsers].sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase())
+      )
 
-      markdown += `| ${day.day} | ${featureInteractions} | ${day.total_interactions} | ${pct}% | ${activeUsers.join(', ')} |\n`
+      markdown += `| ${week} | ${data.featureInteractions} | ${data.totalInteractions} | ${pct}% | ${activeList.join(', ')} |\n`
     }
     markdown += '\n'
 

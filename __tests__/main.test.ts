@@ -9,7 +9,6 @@ import { jest } from '@jest/globals'
 import * as core from '../__fixtures__/core.js'
 
 const getConnectedUser = jest.fn<() => Promise<string>>()
-const fetchMissingOrganizationMetrics = jest.fn<() => Promise<void>>()
 const fetchMissingUsersMetrics = jest.fn<() => Promise<void>>()
 const getCacheDirectory = jest.fn<() => Promise<string>>()
 const generateReports = jest.fn<() => Promise<void>>()
@@ -19,12 +18,6 @@ jest.unstable_mockModule('@actions/core', () => core)
 jest.unstable_mockModule('../src/utils/github/getConnectedUser.js', () => ({
   getConnectedUser
 }))
-jest.unstable_mockModule(
-  '../src/utils/fetchMissingOrganizationMetrics.js',
-  () => ({
-    fetchMissingOrganizationMetrics
-  })
-)
 jest.unstable_mockModule('../src/utils/fetchMissingUsersMetrics.js', () => ({
   fetchMissingUsersMetrics
 }))
@@ -45,12 +38,10 @@ describe('main.ts', () => {
       if (name === 'github_token') return 'fake-token'
       if (name === 'github_org') return 'my-org'
       if (name === 'path') return '/tmp/metrics'
-      if (name === 'reports') return 'all'
       return ''
     })
 
     getConnectedUser.mockResolvedValue('test-user')
-    fetchMissingOrganizationMetrics.mockResolvedValue(undefined)
     fetchMissingUsersMetrics.mockResolvedValue(undefined)
     generateReports.mockResolvedValue(undefined)
   })
@@ -65,15 +56,9 @@ describe('main.ts', () => {
     expect(core.setOutput).toHaveBeenNthCalledWith(1, 'path', '/tmp/metrics')
   })
 
-  it('Calls both fetch functions with subfolders when metrics=all', async () => {
+  it('Fetches user metrics', async () => {
     await run()
 
-    expect(fetchMissingOrganizationMetrics).toHaveBeenCalledWith({
-      githubToken: 'fake-token',
-      org: 'my-org',
-      storePath: '/tmp/metrics/source/organization',
-      lookbackDays: 100
-    })
     expect(fetchMissingUsersMetrics).toHaveBeenCalledWith({
       githubToken: 'fake-token',
       org: 'my-org',
@@ -82,42 +67,11 @@ describe('main.ts', () => {
     })
   })
 
-  it('Only calls fetchMissingOrganizationMetrics when metrics=organization', async () => {
-    core.getInput.mockImplementation((name: string) => {
-      if (name === 'github_token') return 'fake-token'
-      if (name === 'github_org') return 'my-org'
-      if (name === 'path') return '/tmp/metrics'
-      if (name === 'reports') return 'organization'
-      return ''
-    })
-
-    await run()
-
-    expect(fetchMissingOrganizationMetrics).toHaveBeenCalledTimes(1)
-    expect(fetchMissingUsersMetrics).not.toHaveBeenCalled()
-  })
-
-  it('Only calls fetchMissingUsersMetrics when metrics=users', async () => {
-    core.getInput.mockImplementation((name: string) => {
-      if (name === 'github_token') return 'fake-token'
-      if (name === 'github_org') return 'my-org'
-      if (name === 'path') return '/tmp/metrics'
-      if (name === 'reports') return 'users'
-      return ''
-    })
-
-    await run()
-
-    expect(fetchMissingUsersMetrics).toHaveBeenCalledTimes(1)
-    expect(fetchMissingOrganizationMetrics).not.toHaveBeenCalled()
-  })
-
   it('Uses cache directory when no path is provided', async () => {
     core.getInput.mockImplementation((name: string) => {
       if (name === 'github_token') return 'fake-token'
       if (name === 'github_org') return 'my-org'
       if (name === 'path') return ''
-      if (name === 'reports') return 'all'
       return ''
     })
 
@@ -133,6 +87,32 @@ describe('main.ts', () => {
       'path',
       '/tmp/copilot-metrics-cache'
     )
+  })
+
+  it('Calls generateReports with filters when summary_report=true', async () => {
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'github_token') return 'fake-token'
+      if (name === 'github_org') return 'my-org'
+      if (name === 'path') return '/tmp/metrics'
+      if (name === 'summary_report') return 'true'
+      if (name === 'include_users') return 'alice,bob'
+      if (name === 'exclude_users') return ''
+      return ''
+    })
+
+    await run()
+
+    expect(generateReports).toHaveBeenCalledWith(
+      '/tmp/metrics',
+      ['alice', 'bob'],
+      []
+    )
+  })
+
+  it('Does not call generateReports when summary_report is not true', async () => {
+    await run()
+
+    expect(generateReports).not.toHaveBeenCalled()
   })
 
   it('Sets a failed status on error', async () => {

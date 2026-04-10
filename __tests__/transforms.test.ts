@@ -18,14 +18,6 @@ const { transformFeatureAdoption } =
 const { transformModelAdoption } =
   await import('../src/utils/transform/transformModelAdoption.js')
 
-/** Helper to create org source data */
-const writeOrgDay = (dir: string, day: string, data: object) => {
-  fs.writeFileSync(
-    path.join(dir, `${day}.json`),
-    JSON.stringify({ day, ...data })
-  )
-}
-
 /** Helper to create user source data */
 const writeUserDay = (
   dir: string,
@@ -42,33 +34,39 @@ const writeUserDay = (
 }
 
 describe('transformIdeInteractions', () => {
-  let srcDir: string
+  let usersDir: string
   let outDir: string
 
   beforeEach(() => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'test-transform-'))
-    srcDir = path.join(tmp, 'source')
+    usersDir = path.join(tmp, 'users')
     outDir = path.join(tmp, 'transform')
-    fs.mkdirSync(srcDir, { recursive: true })
+    fs.mkdirSync(usersDir, { recursive: true })
   })
 
   afterEach(() => {
-    fs.rmSync(path.dirname(srcDir), { recursive: true, force: true })
+    fs.rmSync(path.dirname(usersDir), { recursive: true, force: true })
     jest.resetAllMocks()
   })
 
-  it('Produces NDJSON from org source files', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
+  it('Aggregates IDE interactions from user source files', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
       totals_by_ide: [
-        { ide: 'vscode', user_initiated_interaction_count: 100 },
-        { ide: 'jetbrains', user_initiated_interaction_count: 50 }
+        { ide: 'vscode', user_initiated_interaction_count: 80 },
+        { ide: 'jetbrains', user_initiated_interaction_count: 20 }
       ]
     })
-    writeOrgDay(srcDir, '2026-04-02', {
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      totals_by_ide: [
+        { ide: 'vscode', user_initiated_interaction_count: 20 },
+        { ide: 'jetbrains', user_initiated_interaction_count: 30 }
+      ]
+    })
+    writeUserDay(usersDir, '2026-04-02', 'alice', {
       totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 120 }]
     })
 
-    transformIdeInteractions(srcDir, outDir)
+    transformIdeInteractions(usersDir, outDir)
 
     const outputFile = path.join(outDir, 'ide-interactions.ndjson')
     expect(fs.existsSync(outputFile)).toBe(true)
@@ -82,41 +80,95 @@ describe('transformIdeInteractions', () => {
     // Most recent first
     const first = JSON.parse(lines[0])
     expect(first.day).toBe('2026-04-02')
+    expect(first.totals_by_ide[0].ide).toBe('vscode')
+    expect(first.totals_by_ide[0].user_initiated_interaction_count).toBe(120)
+
+    // Day 1: vscode=100, jetbrains=50
+    const second = JSON.parse(lines[1])
+    expect(second.day).toBe('2026-04-01')
+    const vscode = second.totals_by_ide.find(
+      (i: { ide: string }) => i.ide === 'vscode'
+    )
+    expect(vscode.user_initiated_interaction_count).toBe(100)
   })
 
   it('Skips with empty source', () => {
-    transformIdeInteractions(srcDir, outDir)
+    transformIdeInteractions(usersDir, outDir)
     expect(fs.existsSync(path.join(outDir, 'ide-interactions.ndjson'))).toBe(
       false
     )
   })
+
+  it('Applies include filter', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 80 }]
+    })
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 20 }]
+    })
+
+    transformIdeInteractions(usersDir, outDir, ['alice'])
+
+    const lines = fs
+      .readFileSync(path.join(outDir, 'ide-interactions.ndjson'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const parsed = JSON.parse(lines[0])
+    // Only alice's 80
+    expect(parsed.totals_by_ide[0].user_initiated_interaction_count).toBe(80)
+  })
+
+  it('Applies exclude filter', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 80 }]
+    })
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 20 }]
+    })
+
+    transformIdeInteractions(usersDir, outDir, [], ['bob'])
+
+    const lines = fs
+      .readFileSync(path.join(outDir, 'ide-interactions.ndjson'), 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim())
+    const parsed = JSON.parse(lines[0])
+    // Only alice's 80
+    expect(parsed.totals_by_ide[0].user_initiated_interaction_count).toBe(80)
+  })
 })
 
 describe('transformFeatureInteractions', () => {
-  let srcDir: string
+  let usersDir: string
   let outDir: string
 
   beforeEach(() => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'test-feat-'))
-    srcDir = path.join(tmp, 'source')
+    usersDir = path.join(tmp, 'users')
     outDir = path.join(tmp, 'transform')
-    fs.mkdirSync(srcDir, { recursive: true })
+    fs.mkdirSync(usersDir, { recursive: true })
   })
 
   afterEach(() => {
-    fs.rmSync(path.dirname(srcDir), { recursive: true, force: true })
+    fs.rmSync(path.dirname(usersDir), { recursive: true, force: true })
     jest.resetAllMocks()
   })
 
-  it('Produces NDJSON from org source files', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
+  it('Aggregates feature interactions from user source files', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
       totals_by_feature: [
-        { feature: 'code_completions', user_initiated_interaction_count: 200 },
-        { feature: 'chat', user_initiated_interaction_count: 80 }
+        { feature: 'code_completions', user_initiated_interaction_count: 150 },
+        { feature: 'chat', user_initiated_interaction_count: 50 }
+      ]
+    })
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      totals_by_feature: [
+        { feature: 'code_completions', user_initiated_interaction_count: 50 },
+        { feature: 'chat', user_initiated_interaction_count: 30 }
       ]
     })
 
-    transformFeatureInteractions(srcDir, outDir)
+    transformFeatureInteractions(usersDir, outDir)
 
     const outputFile = path.join(outDir, 'feature-interactions.ndjson')
     expect(fs.existsSync(outputFile)).toBe(true)
@@ -129,10 +181,15 @@ describe('transformFeatureInteractions', () => {
 
     const parsed = JSON.parse(lines[0])
     expect(parsed.totals_by_feature.length).toBe(2)
+    // code_completions: 200, chat: 80
+    const cc = parsed.totals_by_feature.find(
+      (f: { feature: string }) => f.feature === 'code_completions'
+    )
+    expect(cc.user_initiated_interaction_count).toBe(200)
   })
 
   it('Skips with empty source', () => {
-    transformFeatureInteractions(srcDir, outDir)
+    transformFeatureInteractions(usersDir, outDir)
     expect(
       fs.existsSync(path.join(outDir, 'feature-interactions.ndjson'))
     ).toBe(false)
@@ -140,33 +197,30 @@ describe('transformFeatureInteractions', () => {
 })
 
 describe('transformDailyUsage', () => {
-  let srcDir: string
-  let outDir: string
   let usersDir: string
+  let outDir: string
 
   beforeEach(() => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'test-daily-'))
-    srcDir = path.join(tmp, 'source')
-    outDir = path.join(tmp, 'transform')
     usersDir = path.join(tmp, 'users')
-    fs.mkdirSync(srcDir, { recursive: true })
+    outDir = path.join(tmp, 'transform')
     fs.mkdirSync(usersDir, { recursive: true })
   })
 
   afterEach(() => {
-    fs.rmSync(path.dirname(srcDir), { recursive: true, force: true })
+    fs.rmSync(path.dirname(usersDir), { recursive: true, force: true })
     jest.resetAllMocks()
   })
 
   it('Produces daily usage NDJSON with active/inactive lists', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
-      daily_active_users: 2,
-      user_initiated_interaction_count: 150
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      user_initiated_interaction_count: 100
     })
-    writeUserDay(usersDir, '2026-04-01', 'alice', {})
-    writeUserDay(usersDir, '2026-04-01', 'bob', {})
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      user_initiated_interaction_count: 50
+    })
 
-    transformDailyUsage(srcDir, outDir, usersDir)
+    transformDailyUsage(usersDir, outDir)
 
     const outputFile = path.join(outDir, 'daily-usage.ndjson')
     expect(fs.existsSync(outputFile)).toBe(true)
@@ -176,25 +230,26 @@ describe('transformDailyUsage', () => {
     )
     expect(parsed.day).toBe('2026-04-01')
     expect(parsed.daily_active_users).toBe(2)
+    expect(parsed.user_initiated_interaction_count).toBe(150)
     expect(parsed.active_users).toContain('alice')
     expect(parsed.active_users).toContain('bob')
+    expect(parsed.active_users_with_interactions).toContain('alice')
+    expect(parsed.active_users_with_interactions).toContain('bob')
+    expect(parsed.active_users_without_interactions).toEqual([])
   })
 
   it('Marks users inactive when they have no data for a day', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
-      daily_active_users: 1,
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
       user_initiated_interaction_count: 100
     })
-    writeOrgDay(srcDir, '2026-04-02', {
-      daily_active_users: 1,
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
       user_initiated_interaction_count: 50
     })
-    // alice active both days, bob only day 1
-    writeUserDay(usersDir, '2026-04-01', 'alice', {})
-    writeUserDay(usersDir, '2026-04-01', 'bob', {})
-    writeUserDay(usersDir, '2026-04-02', 'alice', {})
+    writeUserDay(usersDir, '2026-04-02', 'alice', {
+      user_initiated_interaction_count: 80
+    })
 
-    transformDailyUsage(srcDir, outDir, usersDir)
+    transformDailyUsage(usersDir, outDir)
 
     const lines = fs
       .readFileSync(path.join(outDir, 'daily-usage.ndjson'), 'utf-8')
@@ -205,47 +260,77 @@ describe('transformDailyUsage', () => {
     expect(day2.day).toBe('2026-04-02')
     expect(day2.active_users).toContain('alice')
     expect(day2.inactive_users).toContain('bob')
+    expect(day2.active_users_with_interactions).toContain('alice')
+    expect(day2.active_users_without_interactions).toEqual([])
   })
 
   it('Skips with empty source', () => {
-    transformDailyUsage(srcDir, outDir, usersDir)
+    transformDailyUsage(usersDir, outDir)
     expect(fs.existsSync(path.join(outDir, 'daily-usage.ndjson'))).toBe(false)
+  })
+
+  it('Applies include filter to daily usage', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      user_initiated_interaction_count: 100
+    })
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      user_initiated_interaction_count: 50
+    })
+
+    transformDailyUsage(usersDir, outDir, ['alice'])
+
+    const parsed = JSON.parse(
+      fs
+        .readFileSync(path.join(outDir, 'daily-usage.ndjson'), 'utf-8')
+        .split('\n')[0]
+    )
+    expect(parsed.daily_active_users).toBe(1)
+    expect(parsed.active_users).toEqual(['alice'])
+    expect(parsed.user_initiated_interaction_count).toBe(100)
+  })
+
+  it('Separates active users with and without interactions', () => {
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      user_initiated_interaction_count: 100
+    })
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
+      user_initiated_interaction_count: 0
+    })
+
+    transformDailyUsage(usersDir, outDir)
+
+    const parsed = JSON.parse(
+      fs
+        .readFileSync(path.join(outDir, 'daily-usage.ndjson'), 'utf-8')
+        .split('\n')[0]
+    )
+    expect(parsed.active_users_with_interactions).toEqual(['alice'])
+    expect(parsed.active_users_without_interactions).toEqual(['bob'])
+    expect(parsed.active_users).toEqual(['alice', 'bob'])
   })
 })
 
 describe('transformFeatureAdoption', () => {
-  let srcDir: string
-  let outDir: string
   let usersDir: string
+  let outDir: string
 
   beforeEach(() => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'test-feat-adopt-'))
-    srcDir = path.join(tmp, 'source')
-    outDir = path.join(tmp, 'transform')
     usersDir = path.join(tmp, 'users')
-    fs.mkdirSync(srcDir, { recursive: true })
+    outDir = path.join(tmp, 'transform')
     fs.mkdirSync(usersDir, { recursive: true })
   })
 
   afterEach(() => {
-    fs.rmSync(path.dirname(srcDir), { recursive: true, force: true })
+    fs.rmSync(path.dirname(usersDir), { recursive: true, force: true })
     jest.resetAllMocks()
   })
 
   it('Produces feature adoption NDJSON with user breakdowns', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
-      user_initiated_interaction_count: 300,
-      totals_by_feature: [
-        { feature: 'chat', user_initiated_interaction_count: 200 },
-        {
-          feature: 'code_completions',
-          user_initiated_interaction_count: 100
-        }
-      ]
-    })
     writeUserDay(usersDir, '2026-04-01', 'alice', {
       totals_by_feature: [
-        { feature: 'chat', user_initiated_interaction_count: 120 }
+        { feature: 'chat', user_initiated_interaction_count: 120 },
+        { feature: 'code_completions', user_initiated_interaction_count: 80 }
       ]
     })
     writeUserDay(usersDir, '2026-04-01', 'bob', {
@@ -254,7 +339,7 @@ describe('transformFeatureAdoption', () => {
       ]
     })
 
-    transformFeatureAdoption(srcDir, outDir, usersDir)
+    transformFeatureAdoption(usersDir, outDir)
 
     const outputFile = path.join(outDir, 'feature-adoption.ndjson')
     expect(fs.existsSync(outputFile)).toBe(true)
@@ -262,7 +347,7 @@ describe('transformFeatureAdoption', () => {
     const parsed = JSON.parse(
       fs.readFileSync(outputFile, 'utf-8').split('\n')[0]
     )
-    expect(parsed.features.length).toBe(2)
+    expect(parsed.total_interactions).toBe(280)
     const chat = parsed.features.find(
       (f: { feature: string }) => f.feature === 'chat'
     )
@@ -272,7 +357,7 @@ describe('transformFeatureAdoption', () => {
   })
 
   it('Skips with empty source', () => {
-    transformFeatureAdoption(srcDir, outDir, usersDir)
+    transformFeatureAdoption(usersDir, outDir)
     expect(fs.existsSync(path.join(outDir, 'feature-adoption.ndjson'))).toBe(
       false
     )
@@ -280,32 +365,28 @@ describe('transformFeatureAdoption', () => {
 })
 
 describe('transformModelAdoption', () => {
-  let srcDir: string
-  let outDir: string
   let usersDir: string
+  let outDir: string
 
   beforeEach(() => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'test-model-adopt-'))
-    srcDir = path.join(tmp, 'source')
-    outDir = path.join(tmp, 'transform')
     usersDir = path.join(tmp, 'users')
-    fs.mkdirSync(srcDir, { recursive: true })
+    outDir = path.join(tmp, 'transform')
     fs.mkdirSync(usersDir, { recursive: true })
   })
 
   afterEach(() => {
-    fs.rmSync(path.dirname(srcDir), { recursive: true, force: true })
+    fs.rmSync(path.dirname(usersDir), { recursive: true, force: true })
     jest.resetAllMocks()
   })
 
   it('Aggregates models across features and includes user data', () => {
-    writeOrgDay(srcDir, '2026-04-01', {
-      user_initiated_interaction_count: 500,
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
       totals_by_model_feature: [
         {
           model: 'gpt-4o',
           feature: 'chat',
-          user_initiated_interaction_count: 200
+          user_initiated_interaction_count: 150
         },
         {
           model: 'gpt-4o',
@@ -319,17 +400,17 @@ describe('transformModelAdoption', () => {
         }
       ]
     })
-    writeUserDay(usersDir, '2026-04-01', 'alice', {
+    writeUserDay(usersDir, '2026-04-01', 'bob', {
       totals_by_model_feature: [
         {
           model: 'gpt-4o',
           feature: 'chat',
-          user_initiated_interaction_count: 150
+          user_initiated_interaction_count: 50
         }
       ]
     })
 
-    transformModelAdoption(srcDir, outDir, usersDir)
+    transformModelAdoption(usersDir, outDir)
 
     const outputFile = path.join(outDir, 'model-adoption.ndjson')
     expect(fs.existsSync(outputFile)).toBe(true)
@@ -338,16 +419,18 @@ describe('transformModelAdoption', () => {
       fs.readFileSync(outputFile, 'utf-8').split('\n')[0]
     )
     expect(parsed.models.length).toBe(2)
-    // gpt-4o aggregated: 200+100 = 300
+    // gpt-4o aggregated: alice 150+100 + bob 50 = 300
     const gpt4o = parsed.models.find(
       (m: { model: string }) => m.model === 'gpt-4o'
     )
     expect(gpt4o.interactions).toBe(300)
+    expect(gpt4o.users.length).toBe(2)
     expect(gpt4o.users[0].login).toBe('alice')
+    expect(gpt4o.users[0].interactions).toBe(250)
   })
 
   it('Skips with empty source', () => {
-    transformModelAdoption(srcDir, outDir, usersDir)
+    transformModelAdoption(usersDir, outDir)
     expect(fs.existsSync(path.join(outDir, 'model-adoption.ndjson'))).toBe(
       false
     )

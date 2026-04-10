@@ -1,6 +1,5 @@
 /**
- * Transform: reads organization source daily JSON files and cross-references
- * with users source data to produce an NDJSON file with per-feature adoption
+ * Transform: reads per-user source data and aggregates per-feature adoption
  * data, one line per day (most recent first).
  * Each line: { day, total_interactions, features: [{ feature, interactions,
  *              users: [{ login, interactions }] }] }
@@ -11,7 +10,6 @@ import * as path from 'path'
 
 import * as core from '@actions/core'
 
-import { loadDailyFiles } from '../loadDailyFiles.js'
 import { loadUserDailyFiles } from '../loadUserDailyFiles.js'
 
 interface UserFeatureEntry {
@@ -32,21 +30,23 @@ interface FeatureAdoptionDay {
 }
 
 export const transformFeatureAdoption = (
-  sourcePath: string,
+  usersSourcePath: string,
   transformPath: string,
-  usersSourcePath: string
+  includeUsers: string[] = [],
+  excludeUsers: string[] = []
 ): void => {
-  const dailyFiles = loadDailyFiles(sourcePath)
+  const userFiles = loadUserDailyFiles(
+    usersSourcePath,
+    includeUsers,
+    excludeUsers
+  )
 
-  if (dailyFiles.length === 0) {
-    core.info(
-      'No organization source files found, skipping feature adoption transform'
-    )
+  if (userFiles.length === 0) {
+    core.info('No user source files found, skipping feature adoption transform')
     return
   }
 
-  // Build day → feature → user → interactions from users source
-  const userFiles = loadUserDailyFiles(usersSourcePath)
+  // Build day → feature → user → interactions
   const dayFeatureUsers = new Map<string, Map<string, Map<string, number>>>()
 
   for (const file of userFiles) {
@@ -72,30 +72,25 @@ export const transformFeatureAdoption = (
     }
   }
 
-  const transformed: FeatureAdoptionDay[] = dailyFiles
-    .filter((file) => file.day && Array.isArray(file.totals_by_feature))
-    .map((file) => {
-      const day = file.day as string
-      const orgFeatures = file.totals_by_feature as Array<
-        Record<string, unknown>
-      >
-      const totalInteractions =
-        (file.user_initiated_interaction_count as number) || 0
+  const transformed: FeatureAdoptionDay[] = [...dayFeatureUsers.entries()]
+    .map(([day, featureMap]) => {
+      let totalInteractions = 0
 
-      const featureUsers = dayFeatureUsers.get(day) || new Map()
+      const features: FeatureAdoptionEntry[] = [...featureMap.entries()]
+        .map(([feature, userMap]) => {
+          const interactions = [...userMap.values()].reduce(
+            (sum, v) => sum + v,
+            0
+          )
+          totalInteractions += interactions
 
-      const features: FeatureAdoptionEntry[] = orgFeatures.map((item) => {
-        const feature = String(item.feature || 'unknown')
-        const interactions =
-          (item.user_initiated_interaction_count as number) || 0
+          const users = [...userMap.entries()]
+            .map(([login, count]) => ({ login, interactions: count }))
+            .sort((a, b) => b.interactions - a.interactions)
 
-        const userMap = featureUsers.get(feature) || new Map()
-        const users = [...userMap.entries()]
-          .map(([login, count]) => ({ login, interactions: count }))
-          .sort((a, b) => b.interactions - a.interactions)
-
-        return { feature, interactions, users }
-      })
+          return { feature, interactions, users }
+        })
+        .sort((a, b) => b.interactions - a.interactions)
 
       return { day, total_interactions: totalInteractions, features }
     })

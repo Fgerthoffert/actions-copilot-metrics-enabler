@@ -3,13 +3,18 @@ import * as path from 'path'
 import * as core from '@actions/core'
 
 import { getConnectedUser } from './utils/github/getConnectedUser.js'
-import { fetchMissingOrganizationMetrics } from './utils/fetchMissingOrganizationMetrics.js'
 import { fetchMissingUsersMetrics } from './utils/fetchMissingUsersMetrics.js'
 import { getCacheDirectory } from './utils/getCacheDirectory.js'
 import { generateReports } from './utils/report/generateReports.js'
 
-const METRICS_TYPES = ['organization', 'users'] as const
-type MetricType = (typeof METRICS_TYPES)[number]
+/**
+ * Parses a comma-separated input string into a trimmed, non-empty array of strings.
+ */
+const parseListInput = (input: string): string[] =>
+  input
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
 
 /**
  * The main function for the action.
@@ -22,8 +27,9 @@ export async function run(): Promise<void> {
     const inputPath = core.getInput('path')
     const inputOrg = core.getInput('github_org')
     const inputSummaryReport = core.getInput('summary_report')
-    const inputMetrics = core.getInput('reports') || 'all'
     const lookbackDays = parseInt(core.getInput('lookback_days') || '100', 10)
+    const includeUsers = parseListInput(core.getInput('include_users'))
+    const excludeUsers = parseListInput(core.getInput('exclude_users'))
 
     // Simple API call to ensure the provided token is valid and display the associated username
     await getConnectedUser({ githubToken: inputGithubToken })
@@ -38,46 +44,18 @@ export async function run(): Promise<void> {
 
     core.info(`Metrics will be stored at: ${storePath}`)
 
-    const activeMetrics: MetricType[] =
-      inputMetrics === 'all'
-        ? [...METRICS_TYPES]
-        : (inputMetrics
-            .split(',')
-            .map((r) => r.trim())
-            .filter((r): r is MetricType =>
-              METRICS_TYPES.includes(r as MetricType)
-            ) as MetricType[])
-
-    if (activeMetrics.length === 0) {
-      core.warning(
-        `No valid metrics types specified in "${inputMetrics}". Valid values: ${METRICS_TYPES.join(', ')}, all`
-      )
-    }
-
-    // Collect all metrics for up to 28 days prior
-    for (const metric of activeMetrics) {
-      const metricsPath = path.join(storePath, 'source', metric)
-      core.info(`Collecting data for metrics type: ${metric}`)
-
-      if (metric === 'organization') {
-        await fetchMissingOrganizationMetrics({
-          githubToken: inputGithubToken,
-          org: inputOrg,
-          storePath: metricsPath,
-          lookbackDays
-        })
-      } else if (metric === 'users') {
-        await fetchMissingUsersMetrics({
-          githubToken: inputGithubToken,
-          org: inputOrg,
-          storePath: metricsPath,
-          lookbackDays
-        })
-      }
-    }
+    // Fetch all user-level metrics
+    const usersPath = path.join(storePath, 'source', 'users')
+    core.info('Collecting data for user metrics')
+    await fetchMissingUsersMetrics({
+      githubToken: inputGithubToken,
+      org: inputOrg,
+      storePath: usersPath,
+      lookbackDays
+    })
 
     if (inputSummaryReport === 'true') {
-      await generateReports(storePath)
+      await generateReports(storePath, includeUsers, excludeUsers)
     }
 
     core.setOutput('path', storePath)

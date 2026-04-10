@@ -33,6 +33,17 @@ const loadTransformFile = (transformPath: string): ModelAdoptionDay[] => {
     .map((line) => JSON.parse(line) as ModelAdoptionDay)
 }
 
+const getISOWeek = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00Z')
+  const dayOfWeek = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  )
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
 const renderTable = (
   periodLabel: string,
   periods: string[],
@@ -151,29 +162,32 @@ export const generateModelAdoptionReport = (
     markdown += `*Others: models individually representing less than 5% of total usage (${othersMembers.join(', ')})*\n\n`
   }
 
-  // Daily table — show all models without collapsing
+  // Weekly table — show all models without collapsing
   const allModels = [...modelTotals.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([model]) => model)
 
-  markdown += `## Daily\n\n`
-  markdown += renderTable(
-    'Date',
-    days.map((d) => d.day),
-    allModels,
-    (day) => {
-      const modelMap = new Map<string, number>()
-      const dayData = days.find((d) => d.day === day)
-      if (dayData) {
-        for (const entry of dayData.models) {
-          modelMap.set(
-            entry.model,
-            (modelMap.get(entry.model) || 0) + entry.interactions
-          )
-        }
-      }
-      return modelMap
+  const weekMap = new Map<string, Map<string, number>>()
+  for (const day of days) {
+    const week = getISOWeek(day.day)
+    if (!weekMap.has(week)) weekMap.set(week, new Map())
+    const wModelMap = weekMap.get(week)!
+    for (const entry of day.models) {
+      wModelMap.set(
+        entry.model,
+        (wModelMap.get(entry.model) || 0) + entry.interactions
+      )
     }
+  }
+
+  const weeks = [...weekMap.keys()].sort().reverse()
+
+  markdown += `## Weekly\n\n`
+  markdown += renderTable(
+    'Week',
+    weeks,
+    allModels,
+    (week) => weekMap.get(week)!
   )
 
   return [{ filename: 'model-adoption.md', content: markdown }]

@@ -5,13 +5,13 @@
   "author": "",
   "type": "module",
   "private": true,
-  "homepage": "https://github.com/fgerthoffert/actions-copilot-metrics-archiver",
+  "homepage": "https://github.com/fgerthoffert/actions-copilot-metrics-enabler",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fgerthoffert/actions-copilot-metrics-archiver.git"
+    "url": "git+https://github.com/fgerthoffert/actions-copilot-metrics-enabler.git"
   },
   "bugs": {
-    "url": "https://github.com/fgerthoffert/actions-copilot-metrics-archiver/issues"
+    "url": "https://github.com/fgerthoffert/actions-copilot-metrics-enabler/issues"
   },
   "keywords": [
     "actions"

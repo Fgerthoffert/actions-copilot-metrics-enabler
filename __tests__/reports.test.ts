@@ -17,6 +17,8 @@ const { generateModelAdoptionReport } =
   await import('../src/utils/report/generateModelAdoptionReport.js')
 const { generatePerModelAdoptionReport } =
   await import('../src/utils/report/generatePerModelAdoptionReport.js')
+const { generatePerUserAdoptionReport } =
+  await import('../src/utils/report/generatePerUserAdoptionReport.js')
 const { generateDailyUsageReport } =
   await import('../src/utils/report/generateDailyUsageReport.js')
 const { writeReportFiles } =
@@ -71,7 +73,7 @@ describe('generateIdeAdoptionReport', () => {
     const md = result[0].content
     expect(md).toContain('# IDE Adoption')
     expect(md).toContain('## Monthly')
-    expect(md).toContain('## Daily')
+    expect(md).toContain('## Weekly')
     expect(md).toContain('vscode')
     expect(md).toContain('jetbrains')
     // Check percentage format
@@ -165,7 +167,7 @@ describe('generatePerFeatureAdoptionReport', () => {
     expect(chatReport!.content).toContain('alice')
     expect(chatReport!.content).toContain('bob')
     expect(chatReport!.content).toContain('## Monthly')
-    expect(chatReport!.content).toContain('## Daily')
+    expect(chatReport!.content).toContain('## Weekly')
   })
 })
 
@@ -219,7 +221,7 @@ describe('generateModelAdoptionReport', () => {
     const result = generateModelAdoptionReport(tmpDir)
     const md = result[0].content
     // Monthly section should have Others
-    const monthlySection = md.split('## Daily')[0]
+    const monthlySection = md.split('## Weekly')[0]
     expect(monthlySection).toContain('Others')
     expect(md).toContain('less than 5%')
   })
@@ -238,12 +240,14 @@ describe('generateModelAdoptionReport', () => {
 
     const result = generateModelAdoptionReport(tmpDir)
     const md = result[0].content
-    // Daily section should show tiny-model directly
-    const dailySection = md.split('## Daily')[1]
-    expect(dailySection).toContain('tiny-model')
-    // Daily section should NOT have Others column
-    const dailyHeader = dailySection.split('\n').find((l) => l.startsWith('|'))
-    expect(dailyHeader).not.toContain('Others')
+    // Weekly section should show tiny-model directly
+    const weeklySection = md.split('## Weekly')[1]
+    expect(weeklySection).toContain('tiny-model')
+    // Weekly section should NOT have Others column
+    const weeklyHeader = weeklySection
+      .split('\n')
+      .find((l) => l.startsWith('|'))
+    expect(weeklyHeader).not.toContain('Others')
   })
 })
 
@@ -316,12 +320,15 @@ describe('generateDailyUsageReport', () => {
   })
 
   it('Generates AI adoption report with monthly and daily tables', () => {
+    // 2026-04-01 is a Wednesday, 2026-04-02 is a Thursday (both weekdays)
     writeNdjson(tmpDir, 'daily-usage.ndjson', [
       {
         day: '2026-04-02',
         daily_active_users: 3,
         user_initiated_interaction_count: 200,
         active_users: ['alice', 'bob', 'carol'],
+        active_users_with_interactions: ['alice', 'bob'],
+        active_users_without_interactions: ['carol'],
         inactive_users: ['dave']
       },
       {
@@ -329,6 +336,8 @@ describe('generateDailyUsageReport', () => {
         daily_active_users: 2,
         user_initiated_interaction_count: 150,
         active_users: ['alice', 'bob'],
+        active_users_with_interactions: ['alice'],
+        active_users_without_interactions: ['bob'],
         inactive_users: ['carol', 'dave']
       }
     ])
@@ -340,9 +349,164 @@ describe('generateDailyUsageReport', () => {
     const md = result[0].content
     expect(md).toContain('# AI Adoption')
     expect(md).toContain('## Monthly')
-    expect(md).toContain('## Daily')
+    expect(md).toContain('## Weekly')
+    expect(md).toContain('## Definitions')
     expect(md).toContain('alice')
     expect(md).toContain('dave')
+    expect(md).toContain('Avg Active Users / Day (weekdays)')
+    expect(md).toContain('Avg Interacting Users / Day (weekdays)')
+    expect(md).toContain('Most Interactions (5)')
+    expect(md).toContain('Active Users with Interactions')
+    expect(md).toContain('Active Users without Interactions')
+  })
+
+  it('Computes weekday-only average excluding weekends', () => {
+    // 2026-04-04 is Saturday, 2026-04-05 is Sunday
+    // 2026-04-06 is Monday (weekday)
+    writeNdjson(tmpDir, 'daily-usage.ndjson', [
+      {
+        day: '2026-04-04',
+        daily_active_users: 10,
+        user_initiated_interaction_count: 100,
+        active_users: ['alice'],
+        active_users_with_interactions: ['alice'],
+        active_users_without_interactions: [],
+        inactive_users: []
+      },
+      {
+        day: '2026-04-05',
+        daily_active_users: 10,
+        user_initiated_interaction_count: 100,
+        active_users: ['alice'],
+        active_users_with_interactions: ['alice'],
+        active_users_without_interactions: [],
+        inactive_users: []
+      },
+      {
+        day: '2026-04-06',
+        daily_active_users: 4,
+        user_initiated_interaction_count: 50,
+        active_users: ['alice', 'bob'],
+        active_users_with_interactions: ['alice', 'bob'],
+        active_users_without_interactions: [],
+        inactive_users: []
+      }
+    ])
+
+    const result = generateDailyUsageReport(tmpDir)
+    const md = result[0].content
+    // Monthly row: weekday avg should be 4 (only Monday counted)
+    const monthlyLines = md.split('## Weekly')[0].split('\n')
+    const dataRow = monthlyLines.find((l) => l.includes('2026-04'))
+    expect(dataRow).toContain('| 4 |')
+  })
+})
+
+describe('generatePerUserAdoptionReport', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'test-per-user-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    jest.resetAllMocks()
+  })
+
+  it('Returns empty array when no data', () => {
+    const result = generatePerUserAdoptionReport(tmpDir)
+    expect(result).toEqual([])
+  })
+
+  it('Generates per-user report with one section per user', () => {
+    // 2026-04-01 is Wednesday (weekday), 2026-04-02 is Thursday (weekday)
+    writeNdjson(tmpDir, 'feature-adoption.ndjson', [
+      {
+        day: '2026-04-01',
+        total_interactions: 300,
+        features: [
+          {
+            feature: 'chat',
+            interactions: 200,
+            users: [
+              { login: 'alice', interactions: 120 },
+              { login: 'bob', interactions: 80 }
+            ]
+          },
+          {
+            feature: 'code_completions',
+            interactions: 100,
+            users: [{ login: 'alice', interactions: 100 }]
+          }
+        ]
+      },
+      {
+        day: '2026-04-02',
+        total_interactions: 200,
+        features: [
+          {
+            feature: 'chat',
+            interactions: 150,
+            users: [{ login: 'alice', interactions: 150 }]
+          },
+          {
+            feature: 'code_completions',
+            interactions: 50,
+            users: [{ login: 'bob', interactions: 50 }]
+          }
+        ]
+      }
+    ])
+
+    const result = generatePerUserAdoptionReport(tmpDir)
+    expect(result.length).toBe(1)
+    expect(result[0].filename).toBe('per-user-adoption.md')
+
+    const md = result[0].content
+    expect(md).toContain('# AI Adoption — Per User')
+    expect(md).toContain('## alice')
+    expect(md).toContain('## bob')
+    expect(md).toContain('chat')
+    expect(md).toContain('code_completions')
+    expect(md).toContain('Avg Daily Interactions (weekdays)')
+  })
+
+  it('Computes weekday-only average excluding weekends', () => {
+    // 2026-04-04 is Saturday, 2026-04-06 is Monday
+    writeNdjson(tmpDir, 'feature-adoption.ndjson', [
+      {
+        day: '2026-04-04',
+        total_interactions: 100,
+        features: [
+          {
+            feature: 'chat',
+            interactions: 100,
+            users: [{ login: 'alice', interactions: 100 }]
+          }
+        ]
+      },
+      {
+        day: '2026-04-06',
+        total_interactions: 60,
+        features: [
+          {
+            feature: 'chat',
+            interactions: 60,
+            users: [{ login: 'alice', interactions: 60 }]
+          }
+        ]
+      }
+    ])
+
+    const result = generatePerUserAdoptionReport(tmpDir)
+    const md = result[0].content
+    // alice: weekday interactions = 60 (only Monday), weekday count = 1
+    // avg = 60, total = 160 (Saturday + Monday)
+    const aliceSection = md.split('## alice')[1]
+    const dataRow = aliceSection.split('\n').find((l) => l.includes('2026-04'))
+    expect(dataRow).toContain('| 60 |')
+    expect(dataRow).toContain('| 160 |')
   })
 })
 

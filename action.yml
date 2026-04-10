@@ -1,7 +1,7 @@
-name: Copilot Metrics Archiver
+name: Copilot Metrics Enabler
 description:
   A GitHub Action that retrieves GitHub Copilot usage metrics from the API and
-  organizes them into daily JSON files and generate an adoption report.
+  organizes them to facilitate analysis and enablement.
 author: Francois Gerthoffert
 
 branding:
@@ -28,11 +28,19 @@ inputs:
       summary.
     default: 'false'
     required: false
-  metrics:
+  include_users:
     description: >-
-      Comma-separated list of report types to collect. Valid values:
-      organization, users, all. Each report type is stored in its own subfolder.
-    default: 'all'
+      Comma-separated list of user logins to include in reports. When set, only
+      these users will appear in the transformed data and generated reports.
+      Leave empty to include all users.
+    default: ''
+    required: false
+  exclude_users:
+    description: >-
+      Comma-separated list of user logins to exclude from reports. These users
+      will be removed from the transformed data and generated reports. Ignored
+      if include_users is set.
+    default: ''
     required: false
   lookback_days:
     description: Number of days to look back in history for missing data.

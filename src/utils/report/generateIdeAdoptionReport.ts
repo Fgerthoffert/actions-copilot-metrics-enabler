@@ -31,6 +31,17 @@ const loadTransformFile = (transformPath: string): IdeInteractionDay[] => {
     .map((line) => JSON.parse(line) as IdeInteractionDay)
 }
 
+const getISOWeek = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00Z')
+  const dayOfWeek = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  )
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
 export const generateIdeAdoptionReport = (
   transformPath: string
 ): ReportFile[] => {
@@ -74,6 +85,22 @@ export const generateIdeAdoptionReport = (
 
   const months = [...monthMap.keys()].sort().reverse()
 
+  // Aggregate by ISO week, most recent first
+  const weekMap = new Map<string, Map<string, number>>()
+  for (const day of days) {
+    const week = getISOWeek(day.day)
+    if (!weekMap.has(week)) weekMap.set(week, new Map())
+    const wIdeMap = weekMap.get(week)!
+    for (const entry of day.totals_by_ide) {
+      wIdeMap.set(
+        entry.ide,
+        (wIdeMap.get(entry.ide) || 0) + entry.user_initiated_interaction_count
+      )
+    }
+  }
+
+  const weeks = [...weekMap.keys()].sort().reverse()
+
   let markdown = `# IDE Adoption — User Initiated Interactions\n\n`
   markdown += `[← Back to Index](README.md)\n\n`
 
@@ -86,27 +113,9 @@ export const generateIdeAdoptionReport = (
     (month) => monthMap.get(month)!
   )
 
-  // Daily table
-  markdown += `## Daily\n\n`
-  markdown += renderTable(
-    'Date',
-    days.map((d) => d.day),
-    ides,
-    (day) => {
-      const ideMap = new Map<string, number>()
-      const dayData = days.find((d) => d.day === day)
-      if (dayData) {
-        for (const entry of dayData.totals_by_ide) {
-          ideMap.set(
-            entry.ide,
-            (ideMap.get(entry.ide) || 0) +
-              entry.user_initiated_interaction_count
-          )
-        }
-      }
-      return ideMap
-    }
-  )
+  // Weekly table
+  markdown += `## Weekly\n\n`
+  markdown += renderTable('Week', weeks, ides, (week) => weekMap.get(week)!)
 
   return [{ filename: 'ide-adoption.md', content: markdown }]
 }
