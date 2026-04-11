@@ -1,6 +1,7 @@
 /**
- * Transform: reads organization source daily JSON files and produces
- * an NDJSON file with IDE interaction data, one line per day (most recent first).
+ * Transform: reads per-user source data and aggregates IDE interaction counts
+ * to produce an NDJSON file with IDE interaction data, one line per day
+ * (most recent first).
  * Each line: { day, totals_by_ide: [{ ide, user_initiated_interaction_count }] }
  */
 
@@ -9,7 +10,7 @@ import * as path from 'path'
 
 import * as core from '@actions/core'
 
-import { loadDailyFiles } from '../loadDailyFiles.js'
+import { loadUserDailyFiles } from '../loadUserDailyFiles.js'
 
 interface IdeInteractionEntry {
   ide: string
@@ -22,29 +23,58 @@ interface IdeInteractionDay {
 }
 
 export const transformIdeInteractions = (
-  sourcePath: string,
-  transformPath: string
+  usersSourcePath: string,
+  transformPath: string,
+  includeUsers: string[] = [],
+  excludeUsers: string[] = []
 ): void => {
-  const dailyFiles = loadDailyFiles(sourcePath)
+  const userFiles = loadUserDailyFiles(
+    usersSourcePath,
+    includeUsers,
+    excludeUsers
+  )
 
-  if (dailyFiles.length === 0) {
-    core.info('No organization source files found, skipping IDE transform')
+  if (userFiles.length === 0) {
+    core.info('No user source files found, skipping IDE transform')
     return
   }
 
-  const transformed: IdeInteractionDay[] = dailyFiles
-    .filter((file) => file.day && Array.isArray(file.totals_by_ide))
-    .map((file) => {
-      const items = file.totals_by_ide as Array<Record<string, unknown>>
-      return {
-        day: file.day as string,
-        totals_by_ide: items.map((item) => ({
-          ide: String(item.ide || 'unknown'),
-          user_initiated_interaction_count:
-            (item.user_initiated_interaction_count as number) || 0
+  // Group by day, then aggregate IDE interactions
+  const dayIdeMap = new Map<string, Map<string, number>>()
+
+  for (const file of userFiles) {
+    const day = file.day as string
+    if (!day) continue
+
+    const items = file.totals_by_ide as
+      | Array<Record<string, unknown>>
+      | undefined
+    if (!Array.isArray(items)) continue
+
+    if (!dayIdeMap.has(day)) dayIdeMap.set(day, new Map())
+    const ideMap = dayIdeMap.get(day)!
+
+    for (const item of items) {
+      const ide = String(item.ide || 'unknown')
+      const count = (item.user_initiated_interaction_count as number) || 0
+      ideMap.set(ide, (ideMap.get(ide) || 0) + count)
+    }
+  }
+
+  const transformed: IdeInteractionDay[] = [...dayIdeMap.entries()]
+    .map(([day, ideMap]) => ({
+      day,
+      totals_by_ide: [...ideMap.entries()]
+        .map(([ide, user_initiated_interaction_count]) => ({
+          ide,
+          user_initiated_interaction_count
         }))
-      }
-    })
+        .sort(
+          (a, b) =>
+            b.user_initiated_interaction_count -
+            a.user_initiated_interaction_count
+        )
+    }))
     .sort((a, b) => b.day.localeCompare(a.day))
 
   if (!fs.existsSync(transformPath)) {

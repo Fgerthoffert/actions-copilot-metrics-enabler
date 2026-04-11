@@ -60668,20 +60668,20 @@ const getConnectedUser = async ({ githubToken }) => {
 };
 
 /**
- * Scans a directory for existing daily JSON files matching the YYYY-MM-DD.json pattern
- * and returns a Set of the date strings found.
+ * Scans storePath for existing YYYY-MM-DD date folders (used by users metrics)
+ * and returns a Set of date strings that already have data.
  */
-const getExistingDailyFiles = async (storePath) => {
-    const datePattern = /^\d{4}-\d{2}-\d{2}\.json$/;
+const getExistingUserDailyDates = async (storePath) => {
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
     if (!fs.existsSync(storePath)) {
         info(`Store path does not exist yet: ${storePath}`);
         return new Set();
     }
-    const files = fs.readdirSync(storePath);
-    const existingDates = new Set(files
-        .filter((f) => datePattern.test(f))
-        .map((f) => path.basename(f, '.json')));
-    info(`Found ${existingDates.size} existing daily file(s) in ${storePath}`);
+    const entries = fs.readdirSync(storePath, { withFileTypes: true });
+    const existingDates = new Set(entries
+        .filter((e) => e.isDirectory() && datePattern.test(e.name))
+        .map((e) => e.name));
+    info(`Found ${existingDates.size} existing user daily folder(s) in ${storePath}`);
     return existingDates;
 };
 
@@ -65028,108 +65028,6 @@ function restEndpointMethods(octokit) {
 }
 restEndpointMethods.VERSION = VERSION;
 
-const getOrganizationMetrics = async ({ githubToken, org, day }) => {
-    const MyOctokit = Octokit.plugin(paginateRest, restEndpointMethods);
-    const octokit = new MyOctokit({ auth: githubToken });
-    info(`Fetching Copilot metrics for org "${org}" on ${day}`);
-    const metrics = await octokit.request('GET /orgs/{org}/copilot/metrics/reports/organization-1-day', {
-        org,
-        day,
-        headers: {
-            'X-GitHub-Api-Version': '2026-03-10'
-        }
-    });
-    info(`Successfully fetched metrics for ${day}`);
-    debug(JSON.stringify(metrics.data, null, 2));
-    return metrics.data;
-};
-
-/**
- * Downloads the actual report content from the download links returned by the
- * Copilot metrics API. Returns an array of parsed JSON objects, one per link.
- */
-const downloadReportContent = async (downloadLinks) => {
-    const results = [];
-    for (const [index, url] of downloadLinks.entries()) {
-        info(`Downloading report content (${index + 1}/${downloadLinks.length})`);
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to download report from link ${index + 1}: ${response.status} ${response.statusText}`);
-        }
-        const data = (await response.json());
-        results.push(data);
-    }
-    return results;
-};
-
-/**
- * Saves metrics data as daily JSON files. The first item is saved as YYYY-MM-DD.json,
- * additional items are saved as YYYY-MM-DD.json.1, YYYY-MM-DD.json.2, etc.
- */
-const saveDailyMetrics = async (storePath, day, dataItems) => {
-    if (!fs.existsSync(storePath)) {
-        fs.mkdirSync(storePath, { recursive: true });
-    }
-    for (const [index, data] of dataItems.entries()) {
-        const fileName = index === 0 ? `${day}.json` : `${day}.json.${index}`;
-        const filePath = path.join(storePath, fileName);
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-        info(`Saved metrics for ${day} to ${filePath}`);
-    }
-};
-
-/**
- * Orchestrates fetching and saving Copilot metrics for all missing days.
- * Scans storePath for existing files, identifies gaps in the last 28 days,
- * fetches the download links from the API, downloads the actual report content,
- * and saves each day's data.
- */
-const fetchMissingOrganizationMetrics = async ({ githubToken, org, storePath, lookbackDays }) => {
-    const existingDates = await getExistingDailyFiles(storePath);
-    const missingDays = getMissingDays(existingDates, lookbackDays);
-    if (missingDays.length === 0) {
-        info('All daily metrics files are up-to-date, nothing to fetch');
-        return;
-    }
-    for (const day of missingDays) {
-        try {
-            const apiResponse = await getOrganizationMetrics({
-                githubToken,
-                org,
-                day
-            });
-            const downloadLinks = apiResponse.download_links;
-            if (!Array.isArray(downloadLinks) || downloadLinks.length === 0) {
-                warning(`No download links returned for ${day}, skipping`);
-                continue;
-            }
-            const reportData = await downloadReportContent(downloadLinks);
-            await saveDailyMetrics(storePath, day, reportData);
-        }
-        catch (error) {
-            warning(`Failed to fetch metrics for ${day}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-};
-
-/**
- * Scans storePath for existing YYYY-MM-DD date folders (used by users metrics)
- * and returns a Set of date strings that already have data.
- */
-const getExistingUserDailyDates = async (storePath) => {
-    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-    if (!fs.existsSync(storePath)) {
-        info(`Store path does not exist yet: ${storePath}`);
-        return new Set();
-    }
-    const entries = fs.readdirSync(storePath, { withFileTypes: true });
-    const existingDates = new Set(entries
-        .filter((e) => e.isDirectory() && datePattern.test(e.name))
-        .map((e) => e.name));
-    info(`Found ${existingDates.size} existing user daily folder(s) in ${storePath}`);
-    return existingDates;
-};
-
 /**
  * Fetches Copilot usage metrics from the /orgs/{org}/copilot/metrics endpoint
  * for a single day (using since/until for a one-day window).
@@ -65248,96 +65146,14 @@ const getCacheDirectory = async (folderName) => {
 };
 
 /**
- * Loads and parses all daily JSON files (including multi-part files like .json.1)
- * from the store path, returning them sorted chronologically.
- */
-const loadDailyFiles = (storePath) => {
-    const filePattern = /^\d{4}-\d{2}-\d{2}\.json(\.\d+)?$/;
-    if (!fs.existsSync(storePath)) {
-        info(`Store path does not exist: ${storePath}`);
-        return [];
-    }
-    const files = fs.readdirSync(storePath).filter((f) => filePattern.test(f));
-    files.sort();
-    const results = files.map((f) => {
-        const content = fs.readFileSync(path.join(storePath, f), 'utf-8');
-        return JSON.parse(content);
-    });
-    info(`Loaded ${results.length} daily file(s) for report generation`);
-    return results;
-};
-
-/**
- * Transform: reads organization source daily JSON files and produces
- * an NDJSON file with IDE interaction data, one line per day (most recent first).
- * Each line: { day, totals_by_ide: [{ ide, user_initiated_interaction_count }] }
- */
-const transformIdeInteractions = (sourcePath, transformPath) => {
-    const dailyFiles = loadDailyFiles(sourcePath);
-    if (dailyFiles.length === 0) {
-        info('No organization source files found, skipping IDE transform');
-        return;
-    }
-    const transformed = dailyFiles
-        .filter((file) => file.day && Array.isArray(file.totals_by_ide))
-        .map((file) => {
-        const items = file.totals_by_ide;
-        return {
-            day: file.day,
-            totals_by_ide: items.map((item) => ({
-                ide: String(item.ide || 'unknown'),
-                user_initiated_interaction_count: item.user_initiated_interaction_count || 0
-            }))
-        };
-    })
-        .sort((a, b) => b.day.localeCompare(a.day));
-    if (!fs.existsSync(transformPath)) {
-        fs.mkdirSync(transformPath, { recursive: true });
-    }
-    const outputFile = path.join(transformPath, 'ide-interactions.ndjson');
-    const ndjson = transformed.map((entry) => JSON.stringify(entry)).join('\n');
-    fs.writeFileSync(outputFile, ndjson, 'utf-8');
-    info(`Wrote ${transformed.length} day(s) to ${outputFile}`);
-};
-
-/**
- * Transform: reads organization source daily JSON files and produces
- * an NDJSON file with feature interaction data, one line per day (most recent first).
- * Each line: { day, totals_by_feature: [{ feature, user_initiated_interaction_count }] }
- */
-const transformFeatureInteractions = (sourcePath, transformPath) => {
-    const dailyFiles = loadDailyFiles(sourcePath);
-    if (dailyFiles.length === 0) {
-        info('No organization source files found, skipping feature transform');
-        return;
-    }
-    const transformed = dailyFiles
-        .filter((file) => file.day && Array.isArray(file.totals_by_feature))
-        .map((file) => {
-        const items = file.totals_by_feature;
-        return {
-            day: file.day,
-            totals_by_feature: items.map((item) => ({
-                feature: String(item.feature || 'unknown'),
-                user_initiated_interaction_count: item.user_initiated_interaction_count || 0
-            }))
-        };
-    })
-        .sort((a, b) => b.day.localeCompare(a.day));
-    if (!fs.existsSync(transformPath)) {
-        fs.mkdirSync(transformPath, { recursive: true });
-    }
-    const outputFile = path.join(transformPath, 'feature-interactions.ndjson');
-    const ndjson = transformed.map((entry) => JSON.stringify(entry)).join('\n');
-    fs.writeFileSync(outputFile, ndjson, 'utf-8');
-    info(`Wrote ${transformed.length} day(s) to ${outputFile}`);
-};
-
-/**
  * Loads all per-user JSON files from date folders under storePath.
  * Expects structure: storePath/YYYY-MM-DD/YYYY-MM-DD-username.json
+ *
+ * Optionally filters by include/exclude user login lists.
+ * When includeUsers is non-empty, only those users are kept.
+ * When excludeUsers is non-empty, those users are removed.
  */
-const loadUserDailyFiles = (storePath) => {
+const loadUserDailyFiles = (storePath, includeUsers = [], excludeUsers = []) => {
     const dateDirPattern = /^\d{4}-\d{2}-\d{2}$/;
     const jsonPattern = /\.json$/;
     if (!fs.existsSync(storePath)) {
@@ -65358,24 +65174,133 @@ const loadUserDailyFiles = (storePath) => {
         }
     }
     info(`Loaded ${results.length} user daily file(s) for report generation`);
-    return results;
+    let filtered = results;
+    if (includeUsers.length > 0) {
+        filtered = filtered.filter((f) => includeUsers.includes(f.user_login));
+        info(`Include filter applied: ${filtered.length} file(s) kept for ${includeUsers.length} user(s)`);
+    }
+    else if (excludeUsers.length > 0) {
+        filtered = filtered.filter((f) => !excludeUsers.includes(f.user_login));
+        info(`Exclude filter applied: ${filtered.length} file(s) kept after removing ${excludeUsers.length} user(s)`);
+    }
+    return filtered;
 };
 
 /**
- * Transform: reads organization source daily JSON files and cross-references
- * with users source data to produce an NDJSON file with per-feature adoption
+ * Transform: reads per-user source data and aggregates IDE interaction counts
+ * to produce an NDJSON file with IDE interaction data, one line per day
+ * (most recent first).
+ * Each line: { day, totals_by_ide: [{ ide, user_initiated_interaction_count }] }
+ */
+const transformIdeInteractions = (usersSourcePath, transformPath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user source files found, skipping IDE transform');
+        return;
+    }
+    // Group by day, then aggregate IDE interactions
+    const dayIdeMap = new Map();
+    for (const file of userFiles) {
+        const day = file.day;
+        if (!day)
+            continue;
+        const items = file.totals_by_ide;
+        if (!Array.isArray(items))
+            continue;
+        if (!dayIdeMap.has(day))
+            dayIdeMap.set(day, new Map());
+        const ideMap = dayIdeMap.get(day);
+        for (const item of items) {
+            const ide = String(item.ide || 'unknown');
+            const count = item.user_initiated_interaction_count || 0;
+            ideMap.set(ide, (ideMap.get(ide) || 0) + count);
+        }
+    }
+    const transformed = [...dayIdeMap.entries()]
+        .map(([day, ideMap]) => ({
+        day,
+        totals_by_ide: [...ideMap.entries()]
+            .map(([ide, user_initiated_interaction_count]) => ({
+            ide,
+            user_initiated_interaction_count
+        }))
+            .sort((a, b) => b.user_initiated_interaction_count -
+            a.user_initiated_interaction_count)
+    }))
+        .sort((a, b) => b.day.localeCompare(a.day));
+    if (!fs.existsSync(transformPath)) {
+        fs.mkdirSync(transformPath, { recursive: true });
+    }
+    const outputFile = path.join(transformPath, 'ide-interactions.ndjson');
+    const ndjson = transformed.map((entry) => JSON.stringify(entry)).join('\n');
+    fs.writeFileSync(outputFile, ndjson, 'utf-8');
+    info(`Wrote ${transformed.length} day(s) to ${outputFile}`);
+};
+
+/**
+ * Transform: reads per-user source data and aggregates feature interaction
+ * counts to produce an NDJSON file with feature interaction data, one line
+ * per day (most recent first).
+ * Each line: { day, totals_by_feature: [{ feature, user_initiated_interaction_count }] }
+ */
+const transformFeatureInteractions = (usersSourcePath, transformPath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user source files found, skipping feature transform');
+        return;
+    }
+    // Group by day, then aggregate feature interactions
+    const dayFeatureMap = new Map();
+    for (const file of userFiles) {
+        const day = file.day;
+        if (!day)
+            continue;
+        const items = file.totals_by_feature;
+        if (!Array.isArray(items))
+            continue;
+        if (!dayFeatureMap.has(day))
+            dayFeatureMap.set(day, new Map());
+        const featureMap = dayFeatureMap.get(day);
+        for (const item of items) {
+            const feature = String(item.feature || 'unknown');
+            const count = item.user_initiated_interaction_count || 0;
+            featureMap.set(feature, (featureMap.get(feature) || 0) + count);
+        }
+    }
+    const transformed = [...dayFeatureMap.entries()]
+        .map(([day, featureMap]) => ({
+        day,
+        totals_by_feature: [...featureMap.entries()]
+            .map(([feature, user_initiated_interaction_count]) => ({
+            feature,
+            user_initiated_interaction_count
+        }))
+            .sort((a, b) => b.user_initiated_interaction_count -
+            a.user_initiated_interaction_count)
+    }))
+        .sort((a, b) => b.day.localeCompare(a.day));
+    if (!fs.existsSync(transformPath)) {
+        fs.mkdirSync(transformPath, { recursive: true });
+    }
+    const outputFile = path.join(transformPath, 'feature-interactions.ndjson');
+    const ndjson = transformed.map((entry) => JSON.stringify(entry)).join('\n');
+    fs.writeFileSync(outputFile, ndjson, 'utf-8');
+    info(`Wrote ${transformed.length} day(s) to ${outputFile}`);
+};
+
+/**
+ * Transform: reads per-user source data and aggregates per-feature adoption
  * data, one line per day (most recent first).
  * Each line: { day, total_interactions, features: [{ feature, interactions,
  *              users: [{ login, interactions }] }] }
  */
-const transformFeatureAdoption = (sourcePath, transformPath, usersSourcePath) => {
-    const dailyFiles = loadDailyFiles(sourcePath);
-    if (dailyFiles.length === 0) {
-        info('No organization source files found, skipping feature adoption transform');
+const transformFeatureAdoption = (usersSourcePath, transformPath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user source files found, skipping feature adoption transform');
         return;
     }
-    // Build day → feature → user → interactions from users source
-    const userFiles = loadUserDailyFiles(usersSourcePath);
+    // Build day → feature → user → interactions
     const dayFeatureUsers = new Map();
     for (const file of userFiles) {
         const day = file.day;
@@ -65397,22 +65322,19 @@ const transformFeatureAdoption = (sourcePath, transformPath, usersSourcePath) =>
             userMap.set(login, (userMap.get(login) || 0) + count);
         }
     }
-    const transformed = dailyFiles
-        .filter((file) => file.day && Array.isArray(file.totals_by_feature))
-        .map((file) => {
-        const day = file.day;
-        const orgFeatures = file.totals_by_feature;
-        const totalInteractions = file.user_initiated_interaction_count || 0;
-        const featureUsers = dayFeatureUsers.get(day) || new Map();
-        const features = orgFeatures.map((item) => {
-            const feature = String(item.feature || 'unknown');
-            const interactions = item.user_initiated_interaction_count || 0;
-            const userMap = featureUsers.get(feature) || new Map();
+    const transformed = [...dayFeatureUsers.entries()]
+        .map(([day, featureMap]) => {
+        let totalInteractions = 0;
+        const features = [...featureMap.entries()]
+            .map(([feature, userMap]) => {
+            const interactions = [...userMap.values()].reduce((sum, v) => sum + v, 0);
+            totalInteractions += interactions;
             const users = [...userMap.entries()]
                 .map(([login, count]) => ({ login, interactions: count }))
                 .sort((a, b) => b.interactions - a.interactions);
             return { feature, interactions, users };
-        });
+        })
+            .sort((a, b) => b.interactions - a.interactions);
         return { day, total_interactions: totalInteractions, features };
     })
         .sort((a, b) => b.day.localeCompare(a.day));
@@ -65426,21 +65348,19 @@ const transformFeatureAdoption = (sourcePath, transformPath, usersSourcePath) =>
 };
 
 /**
- * Transform: reads organization source daily JSON files and cross-references
- * with users source data to produce an NDJSON file with per-model adoption
+ * Transform: reads per-user source data and aggregates per-model adoption
  * data, one line per day (most recent first).
  * Aggregates totals_by_model_feature by model name (summing across features).
  * Each line: { day, total_interactions, models: [{ model, interactions,
  *              users: [{ login, interactions }] }] }
  */
-const transformModelAdoption = (sourcePath, transformPath, usersSourcePath) => {
-    const dailyFiles = loadDailyFiles(sourcePath);
-    if (dailyFiles.length === 0) {
-        info('No organization source files found, skipping model adoption transform');
+const transformModelAdoption = (usersSourcePath, transformPath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user source files found, skipping model adoption transform');
         return;
     }
-    // Build day → model → user → interactions from users source
-    const userFiles = loadUserDailyFiles(usersSourcePath);
+    // Build day → model → user → interactions
     const dayModelUsers = new Map();
     for (const file of userFiles) {
         const day = file.day;
@@ -65462,29 +65382,19 @@ const transformModelAdoption = (sourcePath, transformPath, usersSourcePath) => {
             userMap.set(login, (userMap.get(login) || 0) + count);
         }
     }
-    const transformed = dailyFiles
-        .filter((file) => file.day && Array.isArray(file.totals_by_model_feature))
-        .map((file) => {
-        const day = file.day;
-        const orgItems = file.totals_by_model_feature;
-        const totalInteractions = file.user_initiated_interaction_count || 0;
-        // Aggregate org data by model
-        const orgModelMap = new Map();
-        for (const item of orgItems) {
-            const model = String(item.model || 'unknown');
-            const count = item.user_initiated_interaction_count || 0;
-            orgModelMap.set(model, (orgModelMap.get(model) || 0) + count);
-        }
-        const modelUsers = dayModelUsers.get(day) || new Map();
-        const models = [...orgModelMap.entries()]
-            .sort((a, b) => b[1] - a[1])
-            .map(([model, interactions]) => {
-            const userMap = modelUsers.get(model) || new Map();
+    const transformed = [...dayModelUsers.entries()]
+        .map(([day, modelMap]) => {
+        let totalInteractions = 0;
+        const models = [...modelMap.entries()]
+            .map(([model, userMap]) => {
+            const interactions = [...userMap.values()].reduce((sum, v) => sum + v, 0);
+            totalInteractions += interactions;
             const users = [...userMap.entries()]
                 .map(([login, count]) => ({ login, interactions: count }))
                 .sort((a, b) => b.interactions - a.interactions);
             return { model, interactions, users };
-        });
+        })
+            .sort((a, b) => b.interactions - a.interactions);
         return { day, total_interactions: totalInteractions, models };
     })
         .sort((a, b) => b.day.localeCompare(a.day));
@@ -65498,21 +65408,22 @@ const transformModelAdoption = (sourcePath, transformPath, usersSourcePath) => {
 };
 
 /**
- * Transform: reads organization source daily JSON files and cross-references
- * with users source data to produce an NDJSON file with daily usage data,
+ * Transform: reads per-user source data and aggregates daily usage data,
  * one line per day (most recent first).
  * Each line: { day, daily_active_users, user_initiated_interaction_count,
- *              active_users, inactive_users }
+ *              active_users, active_users_with_interactions,
+ *              active_users_without_interactions, inactive_users }
  */
-const transformDailyUsage = (sourcePath, transformPath, usersSourcePath) => {
-    const dailyFiles = loadDailyFiles(sourcePath);
-    if (dailyFiles.length === 0) {
-        info('No organization source files found, skipping daily usage transform');
+const transformDailyUsage = (usersSourcePath, transformPath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user source files found, skipping daily usage transform');
         return;
     }
-    // Build day → set of active user logins from users source
-    const userFiles = loadUserDailyFiles(usersSourcePath);
+    // Build day → set of active user logins and interaction counts
     const dayActiveUsers = new Map();
+    const dayInteractions = new Map();
+    const dayUserInteractions = new Map();
     const allUsers = new Set();
     for (const file of userFiles) {
         const day = file.day;
@@ -65523,20 +65434,27 @@ const transformDailyUsage = (sourcePath, transformPath, usersSourcePath) => {
         if (!dayActiveUsers.has(day))
             dayActiveUsers.set(day, new Set());
         dayActiveUsers.get(day).add(login);
+        const interactions = file.user_initiated_interaction_count || 0;
+        dayInteractions.set(day, (dayInteractions.get(day) || 0) + interactions);
+        if (!dayUserInteractions.has(day))
+            dayUserInteractions.set(day, new Map());
+        dayUserInteractions.get(day).set(login, interactions);
     }
     const allUsersSorted = [...allUsers].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-    const transformed = dailyFiles
-        .filter((file) => file.day)
-        .map((file) => {
-        const day = file.day;
-        const activeSet = dayActiveUsers.get(day) || new Set();
+    const transformed = [...dayActiveUsers.entries()]
+        .map(([day, activeSet]) => {
+        const userInteractions = dayUserInteractions.get(day) || new Map();
         const activeUsers = [...activeSet].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        const activeWithInteractions = activeUsers.filter((u) => (userInteractions.get(u) || 0) > 0);
+        const activeWithoutInteractions = activeUsers.filter((u) => (userInteractions.get(u) || 0) === 0);
         const inactiveUsers = allUsersSorted.filter((u) => !activeSet.has(u));
         return {
             day,
-            daily_active_users: file.daily_active_users || 0,
-            user_initiated_interaction_count: file.user_initiated_interaction_count || 0,
+            daily_active_users: activeSet.size,
+            user_initiated_interaction_count: dayInteractions.get(day) || 0,
             active_users: activeUsers,
+            active_users_with_interactions: activeWithInteractions,
+            active_users_without_interactions: activeWithoutInteractions,
             inactive_users: inactiveUsers
         };
     })
@@ -65554,7 +65472,7 @@ const transformDailyUsage = (sourcePath, transformPath, usersSourcePath) => {
  * Generates an IDE adoption report from the transformed ide-interactions.ndjson.
  * Columns: Date, one per IDE, Total. Each cell shows count and row percentage.
  */
-const loadTransformFile$5 = (transformPath) => {
+const loadTransformFile$6 = (transformPath) => {
     const filePath = path.join(transformPath, 'ide-interactions.ndjson');
     if (!fs.existsSync(filePath))
         return [];
@@ -65564,8 +65482,16 @@ const loadTransformFile$5 = (transformPath) => {
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
 };
+const getISOWeek$5 = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
 const generateIdeAdoptionReport = (transformPath) => {
-    const days = loadTransformFile$5(transformPath);
+    const days = loadTransformFile$6(transformPath);
     if (days.length === 0) {
         info('No IDE interaction data found, skipping IDE adoption report');
         return [];
@@ -65594,24 +65520,26 @@ const generateIdeAdoptionReport = (transformPath) => {
         }
     }
     const months = [...monthMap.keys()].sort().reverse();
+    // Aggregate by ISO week, most recent first
+    const weekMap = new Map();
+    for (const day of days) {
+        const week = getISOWeek$5(day.day);
+        if (!weekMap.has(week))
+            weekMap.set(week, new Map());
+        const wIdeMap = weekMap.get(week);
+        for (const entry of day.totals_by_ide) {
+            wIdeMap.set(entry.ide, (wIdeMap.get(entry.ide) || 0) + entry.user_initiated_interaction_count);
+        }
+    }
+    const weeks = [...weekMap.keys()].sort().reverse();
     let markdown = `# IDE Adoption — User Initiated Interactions\n\n`;
     markdown += `[← Back to Index](README.md)\n\n`;
     // Monthly table
     markdown += `## Monthly\n\n`;
     markdown += renderTable$2('Month', months, ides, (month) => monthMap.get(month));
-    // Daily table
-    markdown += `## Daily\n\n`;
-    markdown += renderTable$2('Date', days.map((d) => d.day), ides, (day) => {
-        const ideMap = new Map();
-        const dayData = days.find((d) => d.day === day);
-        if (dayData) {
-            for (const entry of dayData.totals_by_ide) {
-                ideMap.set(entry.ide, (ideMap.get(entry.ide) || 0) +
-                    entry.user_initiated_interaction_count);
-            }
-        }
-        return ideMap;
-    });
+    // Weekly table
+    markdown += `## Weekly\n\n`;
+    markdown += renderTable$2('Week', weeks, ides, (week) => weekMap.get(week));
     return [{ filename: 'ide-adoption.md', content: markdown }];
 };
 const renderTable$2 = (periodLabel, periods, ides, getIdeMap) => {
@@ -65639,7 +65567,7 @@ const renderTable$2 = (periodLabel, periods, ides, getIdeMap) => {
  * Generates a feature adoption report from the transformed feature-interactions.ndjson.
  * Columns: Date/Month, one per feature, Total. Each cell shows count and row percentage.
  */
-const loadTransformFile$4 = (transformPath) => {
+const loadTransformFile$5 = (transformPath) => {
     const filePath = path.join(transformPath, 'feature-interactions.ndjson');
     if (!fs.existsSync(filePath))
         return [];
@@ -65648,6 +65576,36 @@ const loadTransformFile$4 = (transformPath) => {
         .split('\n')
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
+};
+const getISOWeek$4 = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
+const FEATURE_DESCRIPTIONS$1 = {
+    chat_panel_agent_mode: 'User-initiated interactions in the chat panel with agent mode selected.',
+    chat_panel_ask_mode: 'User-initiated interactions in the chat panel with ask mode selected.',
+    chat_panel_custom_mode: 'User-initiated interactions in the chat panel with a custom agent selected.',
+    chat_panel_edit_mode: 'User-initiated interactions in the chat panel with edit mode selected.',
+    chat_panel_plan_mode: 'User-initiated interactions in the chat panel with plan mode selected.',
+    chat_panel_unknown_mode: 'User-initiated interactions in the chat panel where the mode is unknown.',
+    chat_inline: 'User-initiated interactions using inline chat in the editor.',
+    code_completion: 'Inline code completion suggestions.',
+    agent_edit: 'Lines added and deleted when Copilot (in agent and edit mode) writes changes directly into files. Not included in suggestion-based metrics.'
+};
+const renderFeatureLegend = (features) => {
+    let legend = `## Feature Legend\n\n`;
+    legend += `| Feature | Description |\n`;
+    legend += `| --- | --- |\n`;
+    for (const f of features) {
+        const desc = FEATURE_DESCRIPTIONS$1[f] || 'No description available.';
+        legend += `| ${f} | ${desc} |\n`;
+    }
+    legend += '\n';
+    return legend;
 };
 const renderTable$1 = (periodLabel, periods, features, getFeatureMap) => {
     const headers = [periodLabel, ...features, 'Total'];
@@ -65670,7 +65628,7 @@ const renderTable$1 = (periodLabel, periods, features, getFeatureMap) => {
         '\n\n');
 };
 const generateFeatureAdoptionReport = (transformPath) => {
-    const days = loadTransformFile$4(transformPath);
+    const days = loadTransformFile$5(transformPath);
     if (days.length === 0) {
         info('No feature interaction data found, skipping feature adoption report');
         return [];
@@ -65701,24 +65659,28 @@ const generateFeatureAdoptionReport = (transformPath) => {
         }
     }
     const months = [...monthMap.keys()].sort().reverse();
+    // Aggregate by ISO week, most recent first
+    const weekMap = new Map();
+    for (const day of days) {
+        const week = getISOWeek$4(day.day);
+        if (!weekMap.has(week))
+            weekMap.set(week, new Map());
+        const wFeatureMap = weekMap.get(week);
+        for (const entry of day.totals_by_feature) {
+            wFeatureMap.set(entry.feature, (wFeatureMap.get(entry.feature) || 0) +
+                entry.user_initiated_interaction_count);
+        }
+    }
+    const weeks = [...weekMap.keys()].sort().reverse();
     let markdown = `# Feature Adoption — User Initiated Interactions\n\n`;
     markdown += `[← Back to Index](README.md)\n\n`;
+    markdown += renderFeatureLegend(features);
     // Monthly table
     markdown += `## Monthly\n\n`;
     markdown += renderTable$1('Month', months, features, (month) => monthMap.get(month));
-    // Daily table
-    markdown += `## Daily\n\n`;
-    markdown += renderTable$1('Date', days.map((d) => d.day), features, (day) => {
-        const featureMap = new Map();
-        const dayData = days.find((d) => d.day === day);
-        if (dayData) {
-            for (const entry of dayData.totals_by_feature) {
-                featureMap.set(entry.feature, (featureMap.get(entry.feature) || 0) +
-                    entry.user_initiated_interaction_count);
-            }
-        }
-        return featureMap;
-    });
+    // Weekly table
+    markdown += `## Weekly\n\n`;
+    markdown += renderTable$1('Week', weeks, features, (week) => weekMap.get(week));
     return [{ filename: 'feature-adoption.md', content: markdown }];
 };
 
@@ -65728,7 +65690,7 @@ const generateFeatureAdoptionReport = (transformPath) => {
  * - Monthly table: feature usage vs total, top 5 / bottom 5 users
  * - Daily table: feature usage vs total, active users for that feature
  */
-const loadTransformFile$3 = (transformPath) => {
+const loadTransformFile$4 = (transformPath) => {
     const filePath = path.join(transformPath, 'feature-adoption.ndjson');
     if (!fs.existsSync(filePath))
         return [];
@@ -65738,8 +65700,27 @@ const loadTransformFile$3 = (transformPath) => {
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
 };
+const getISOWeek$3 = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
+const FEATURE_DESCRIPTIONS = {
+    chat_panel_agent_mode: 'User-initiated interactions in the chat panel with agent mode selected.',
+    chat_panel_ask_mode: 'User-initiated interactions in the chat panel with ask mode selected.',
+    chat_panel_custom_mode: 'User-initiated interactions in the chat panel with a custom agent selected.',
+    chat_panel_edit_mode: 'User-initiated interactions in the chat panel with edit mode selected.',
+    chat_panel_plan_mode: 'User-initiated interactions in the chat panel with plan mode selected.',
+    chat_panel_unknown_mode: 'User-initiated interactions in the chat panel where the mode is unknown.',
+    chat_inline: 'User-initiated interactions using inline chat in the editor.',
+    code_completion: 'Inline code completion suggestions.',
+    agent_edit: 'Lines added and deleted when Copilot (in agent and edit mode) writes changes directly into files. Not included in suggestion-based metrics.'
+};
 const generatePerFeatureAdoptionReport = (transformPath) => {
-    const days = loadTransformFile$3(transformPath);
+    const days = loadTransformFile$4(transformPath);
     if (days.length === 0) {
         info('No feature adoption data found, skipping per-feature adoption report');
         return [];
@@ -65760,6 +65741,10 @@ const generatePerFeatureAdoptionReport = (transformPath) => {
     for (const feature of features) {
         let markdown = `# Per Feature Adoption — ${feature}\n\n`;
         markdown += `[← Back to Index](README.md)\n\n`;
+        const desc = FEATURE_DESCRIPTIONS[feature];
+        if (desc) {
+            markdown += `> ${desc}\n\n`;
+        }
         // Monthly aggregation
         const monthData = new Map();
         for (const day of days) {
@@ -65801,22 +65786,37 @@ const generatePerFeatureAdoptionReport = (transformPath) => {
             markdown += `| ${month} | ${data.featureInteractions} | ${data.totalInteractions} | ${pct}% | ${mostActive.join(', ')} | ${leastActive.join(', ')} |\n`;
         }
         markdown += '\n';
-        // Daily table
-        markdown += `## Daily\n\n`;
-        markdown += `| Date | Feature Interactions | Total Interactions | % of Total | Active Users |\n`;
-        markdown += `| --- | --- | --- | --- | --- |\n`;
+        // Weekly table
+        const weekData = new Map();
         for (const day of days) {
+            const week = getISOWeek$3(day.day);
+            const existing = weekData.get(week) || {
+                featureInteractions: 0,
+                totalInteractions: 0,
+                activeUsers: new Set()
+            };
             const featureEntry = day.features.find((f) => f.feature === feature);
-            const featureInteractions = featureEntry?.interactions || 0;
-            const pct = day.total_interactions > 0
-                ? Math.round((featureInteractions / day.total_interactions) * 100)
+            existing.featureInteractions += featureEntry?.interactions || 0;
+            existing.totalInteractions += day.total_interactions;
+            if (featureEntry) {
+                for (const u of featureEntry.users) {
+                    if (u.interactions > 0)
+                        existing.activeUsers.add(u.login);
+                }
+            }
+            weekData.set(week, existing);
+        }
+        const weeks = [...weekData.keys()].sort().reverse();
+        markdown += `## Weekly\n\n`;
+        markdown += `| Week | Feature Interactions | Total Interactions | % of Total | Active Users |\n`;
+        markdown += `| --- | --- | --- | --- | --- |\n`;
+        for (const week of weeks) {
+            const data = weekData.get(week);
+            const pct = data.totalInteractions > 0
+                ? Math.round((data.featureInteractions / data.totalInteractions) * 100)
                 : 0;
-            const activeUsers = featureEntry
-                ? featureEntry.users
-                    .filter((u) => u.interactions > 0)
-                    .map((u) => u.login)
-                : [];
-            markdown += `| ${day.day} | ${featureInteractions} | ${day.total_interactions} | ${pct}% | ${activeUsers.join(', ')} |\n`;
+            const activeList = [...data.activeUsers].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            markdown += `| ${week} | ${data.featureInteractions} | ${data.totalInteractions} | ${pct}% | ${activeList.join(', ')} |\n`;
         }
         markdown += '\n';
         const slug = feature.replace(/[^a-z0-9-]/g, '-');
@@ -65833,7 +65833,7 @@ const generatePerFeatureAdoptionReport = (transformPath) => {
  * model-adoption.ndjson. Columns: Date/Month, one per model, Total.
  * Each cell shows count and row percentage.
  */
-const loadTransformFile$2 = (transformPath) => {
+const loadTransformFile$3 = (transformPath) => {
     const filePath = path.join(transformPath, 'model-adoption.ndjson');
     if (!fs.existsSync(filePath))
         return [];
@@ -65842,6 +65842,14 @@ const loadTransformFile$2 = (transformPath) => {
         .split('\n')
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
+};
+const getISOWeek$2 = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 };
 const renderTable = (periodLabel, periods, models, getModelMap) => {
     const headers = [periodLabel, ...models, 'Total'];
@@ -65864,7 +65872,7 @@ const renderTable = (periodLabel, periods, models, getModelMap) => {
         '\n\n');
 };
 const generateModelAdoptionReport = (transformPath) => {
-    const days = loadTransformFile$2(transformPath);
+    const days = loadTransformFile$3(transformPath);
     if (days.length === 0) {
         info('No model adoption data found, skipping model adoption report');
         return [];
@@ -65928,21 +65936,23 @@ const generateModelAdoptionReport = (transformPath) => {
     if (othersMembers.length > 0) {
         markdown += `*Others: models individually representing less than 5% of total usage (${othersMembers.join(', ')})*\n\n`;
     }
-    // Daily table — show all models without collapsing
+    // Weekly table — show all models without collapsing
     const allModels = [...modelTotals.entries()]
         .sort((a, b) => b[1] - a[1])
         .map(([model]) => model);
-    markdown += `## Daily\n\n`;
-    markdown += renderTable('Date', days.map((d) => d.day), allModels, (day) => {
-        const modelMap = new Map();
-        const dayData = days.find((d) => d.day === day);
-        if (dayData) {
-            for (const entry of dayData.models) {
-                modelMap.set(entry.model, (modelMap.get(entry.model) || 0) + entry.interactions);
-            }
+    const weekMap = new Map();
+    for (const day of days) {
+        const week = getISOWeek$2(day.day);
+        if (!weekMap.has(week))
+            weekMap.set(week, new Map());
+        const wModelMap = weekMap.get(week);
+        for (const entry of day.models) {
+            wModelMap.set(entry.model, (wModelMap.get(entry.model) || 0) + entry.interactions);
         }
-        return modelMap;
-    });
+    }
+    const weeks = [...weekMap.keys()].sort().reverse();
+    markdown += `## Weekly\n\n`;
+    markdown += renderTable('Week', weeks, allModels, (week) => weekMap.get(week));
     return [{ filename: 'model-adoption.md', content: markdown }];
 };
 
@@ -65952,7 +65962,7 @@ const generateModelAdoptionReport = (transformPath) => {
  * - Monthly table: model usage vs total, top 5 / bottom 5 users
  * - Daily table: model usage vs total, active users for that model
  */
-const loadTransformFile$1 = (transformPath) => {
+const loadTransformFile$2 = (transformPath) => {
     const filePath = path.join(transformPath, 'model-adoption.ndjson');
     if (!fs.existsSync(filePath))
         return [];
@@ -65962,8 +65972,16 @@ const loadTransformFile$1 = (transformPath) => {
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
 };
+const getISOWeek$1 = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
 const generatePerModelAdoptionReport = (transformPath) => {
-    const days = loadTransformFile$1(transformPath);
+    const days = loadTransformFile$2(transformPath);
     if (days.length === 0) {
         info('No model adoption data found, skipping per-model adoption report');
         return [];
@@ -66025,20 +66043,37 @@ const generatePerModelAdoptionReport = (transformPath) => {
             markdown += `| ${month} | ${data.modelInteractions} | ${data.totalInteractions} | ${pct}% | ${mostActive.join(', ')} | ${leastActive.join(', ')} |\n`;
         }
         markdown += '\n';
-        // Daily table
-        markdown += `## Daily\n\n`;
-        markdown += `| Date | Model Interactions | Total Interactions | % of Total | Active Users |\n`;
-        markdown += `| --- | --- | --- | --- | --- |\n`;
+        // Weekly table
+        const weekData = new Map();
         for (const day of days) {
+            const week = getISOWeek$1(day.day);
+            const existing = weekData.get(week) || {
+                modelInteractions: 0,
+                totalInteractions: 0,
+                activeUsers: new Set()
+            };
             const modelEntry = day.models.find((m) => m.model === model);
-            const modelInteractions = modelEntry?.interactions || 0;
-            const pct = day.total_interactions > 0
-                ? Math.round((modelInteractions / day.total_interactions) * 100)
+            existing.modelInteractions += modelEntry?.interactions || 0;
+            existing.totalInteractions += day.total_interactions;
+            if (modelEntry) {
+                for (const u of modelEntry.users) {
+                    if (u.interactions > 0)
+                        existing.activeUsers.add(u.login);
+                }
+            }
+            weekData.set(week, existing);
+        }
+        const weeks = [...weekData.keys()].sort().reverse();
+        markdown += `## Weekly\n\n`;
+        markdown += `| Week | Model Interactions | Total Interactions | % of Total | Active Users |\n`;
+        markdown += `| --- | --- | --- | --- | --- |\n`;
+        for (const week of weeks) {
+            const data = weekData.get(week);
+            const pct = data.totalInteractions > 0
+                ? Math.round((data.modelInteractions / data.totalInteractions) * 100)
                 : 0;
-            const activeUsers = modelEntry
-                ? modelEntry.users.filter((u) => u.interactions > 0).map((u) => u.login)
-                : [];
-            markdown += `| ${day.day} | ${modelInteractions} | ${day.total_interactions} | ${pct}% | ${activeUsers.join(', ')} |\n`;
+            const activeList = [...data.activeUsers].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            markdown += `| ${week} | ${data.modelInteractions} | ${data.totalInteractions} | ${pct}% | ${activeList.join(', ')} |\n`;
         }
         markdown += '\n';
         const slug = model.replace(/[^a-z0-9-]/g, '-');
@@ -66051,9 +66086,122 @@ const generatePerModelAdoptionReport = (transformPath) => {
 };
 
 /**
+ * Generates a per-user AI adoption report from the transformed
+ * feature-adoption.ndjson. One table per user showing monthly rows with:
+ * - Avg daily interactions (weekdays only)
+ * - Total monthly interactions
+ * - One column per feature
+ */
+const isWeekday$2 = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const dow = d.getUTCDay();
+    return dow >= 1 && dow <= 5;
+};
+const loadTransformFile$1 = (transformPath) => {
+    const filePath = path.join(transformPath, 'feature-adoption.ndjson');
+    if (!fs.existsSync(filePath))
+        return [];
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return content
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line));
+};
+const generatePerUserAdoptionReport = (transformPath) => {
+    const days = loadTransformFile$1(transformPath);
+    if (days.length === 0) {
+        info('No feature adoption data found, skipping per-user adoption report');
+        return [];
+    }
+    // Collect all unique features, ordered by total interactions descending
+    const featureTotals = new Map();
+    for (const day of days) {
+        for (const f of day.features) {
+            featureTotals.set(f.feature, (featureTotals.get(f.feature) || 0) + f.interactions);
+        }
+    }
+    const features = [...featureTotals.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([f]) => f);
+    if (features.length === 0)
+        return [];
+    // Build per-user, per-month aggregation
+    // user → month → { totalInteractions, weekdayInteractions, weekdayCount, featureInteractions }
+    const userData = new Map();
+    for (const day of days) {
+        const month = day.day.substring(0, 7);
+        const weekday = isWeekday$2(day.day);
+        for (const f of day.features) {
+            for (const u of f.users) {
+                if (!userData.has(u.login))
+                    userData.set(u.login, new Map());
+                const userMonths = userData.get(u.login);
+                if (!userMonths.has(month)) {
+                    userMonths.set(month, {
+                        totalInteractions: 0,
+                        weekdayInteractions: 0,
+                        weekdayCount: 0,
+                        featureInteractions: new Map()
+                    });
+                }
+                const mData = userMonths.get(month);
+                mData.totalInteractions += u.interactions;
+                if (weekday) {
+                    mData.weekdayInteractions += u.interactions;
+                }
+                mData.featureInteractions.set(f.feature, (mData.featureInteractions.get(f.feature) || 0) + u.interactions);
+            }
+        }
+    }
+    // Track weekday counts per month (same for all users)
+    const monthWeekdayCounts = new Map();
+    for (const day of days) {
+        if (isWeekday$2(day.day)) {
+            const month = day.day.substring(0, 7);
+            if (!monthWeekdayCounts.has(month))
+                monthWeekdayCounts.set(month, new Set());
+            monthWeekdayCounts.get(month).add(day.day);
+        }
+    }
+    // Sort users by total interactions descending
+    const sortedUsers = [...userData.entries()]
+        .map(([login, months]) => {
+        const total = [...months.values()].reduce((sum, m) => sum + m.totalInteractions, 0);
+        return { login, months, total };
+    })
+        .sort((a, b) => b.total - a.total);
+    let markdown = `# AI Adoption — Per User\n\n`;
+    markdown += `[← Back to Index](README.md)\n\n`;
+    markdown += `## Table of Contents\n\n`;
+    for (const { login } of sortedUsers) {
+        markdown += `- [${login}](#${login.toLowerCase().replace(/[^a-z0-9-]/g, '-')})\n`;
+    }
+    markdown += '\n';
+    for (const { login, months } of sortedUsers) {
+        markdown += `## ${login}\n\n`;
+        const sortedMonths = [...months.keys()].sort().reverse();
+        markdown += `| Month | Avg Daily Interactions (weekdays) | Total Interactions | ${features.join(' | ')} |\n`;
+        markdown += `| --- | --- | --- | ${features.map(() => '---').join(' | ')} |\n`;
+        for (const month of sortedMonths) {
+            const mData = months.get(month);
+            const weekdayDayCount = monthWeekdayCounts.get(month)?.size || 0;
+            const avgDaily = weekdayDayCount > 0
+                ? Math.round(mData.weekdayInteractions / weekdayDayCount)
+                : 0;
+            const featureCells = features
+                .map((f) => mData.featureInteractions.get(f) || 0)
+                .join(' | ');
+            markdown += `| ${month} | ${avgDaily} | ${mData.totalInteractions} | ${featureCells} |\n`;
+        }
+        markdown += '\n';
+    }
+    return [{ filename: 'per-user-adoption.md', content: markdown }];
+};
+
+/**
  * Generates an AI adoption report from the transformed daily-usage.ndjson.
  * Shows daily_active_users and user_initiated_interaction_count over time,
- * aggregated monthly then listed daily.
+ * aggregated monthly then listed weekly.
  */
 const loadTransformFile = (transformPath) => {
     const filePath = path.join(transformPath, 'daily-usage.ndjson');
@@ -66064,6 +66212,19 @@ const loadTransformFile = (transformPath) => {
         .split('\n')
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line));
+};
+const isWeekday$1 = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const dow = d.getUTCDay();
+    return dow >= 1 && dow <= 5;
+};
+const getISOWeek = (dateStr) => {
+    const date = new Date(dateStr + 'T00:00:00Z');
+    const dayOfWeek = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 };
 const generateDailyUsageReport = (transformPath) => {
     const days = loadTransformFile(transformPath);
@@ -66079,52 +66240,395 @@ const generateDailyUsageReport = (transformPath) => {
             totalUsers: 0,
             totalInteractions: 0,
             dayCount: 0,
-            userActiveDays: new Map()
+            weekdayUserTotal: 0,
+            weekdayInteractingUserTotal: 0,
+            weekdayCount: 0,
+            userInteractionDays: new Map()
         };
         existing.totalUsers += day.daily_active_users;
         existing.totalInteractions += day.user_initiated_interaction_count;
         existing.dayCount += 1;
-        for (const user of day.active_users) {
-            existing.userActiveDays.set(user, (existing.userActiveDays.get(user) || 0) + 1);
+        if (isWeekday$1(day.day)) {
+            existing.weekdayUserTotal += day.daily_active_users;
+            existing.weekdayInteractingUserTotal += (day.active_users_with_interactions || []).length;
+            existing.weekdayCount += 1;
+        }
+        for (const user of day.active_users_with_interactions || []) {
+            existing.userInteractionDays.set(user, (existing.userInteractionDays.get(user) || 0) + 1);
         }
         monthData.set(month, existing);
     }
     const months = [...monthData.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
         .map(([month, data]) => {
-        const sorted = [...data.userActiveDays.entries()].sort((a, b) => b[1] - a[1]);
-        const mostActive = sorted.slice(0, 5).map(([u]) => u);
-        const leastActive = sorted
+        const sorted = [...data.userInteractionDays.entries()].sort((a, b) => b[1] - a[1]);
+        const mostInteractions = sorted.slice(0, 5).map(([u]) => u);
+        const leastInteractions = sorted
             .slice(-5)
             .reverse()
             .map(([u]) => u);
         return {
             month,
-            daily_active_users_avg: Math.round(data.totalUsers / data.dayCount),
+            daily_active_users_avg: data.weekdayCount > 0
+                ? Math.round(data.weekdayUserTotal / data.weekdayCount)
+                : 0,
+            daily_interacting_users_avg: data.weekdayCount > 0
+                ? Math.round(data.weekdayInteractingUserTotal / data.weekdayCount)
+                : 0,
             user_initiated_interaction_count: data.totalInteractions,
-            most_active: mostActive,
-            least_active: leastActive
+            most_interactions: mostInteractions,
+            least_interactions: leastInteractions
         };
     });
     let markdown = `# AI Adoption — Usage Over Time\n\n`;
     markdown += `[← Back to Index](README.md)\n\n`;
     // Monthly table
     markdown += `## Monthly\n\n`;
-    markdown += `| Month | Avg Daily Active Users | User Initiated Interactions | Most Active (5) | Least Active (5) |\n`;
-    markdown += `| --- | --- | --- | --- | --- |\n`;
+    markdown += `| Month | Avg Active Users / Day (weekdays) | Avg Interacting Users / Day (weekdays) | User Initiated Interactions | Most Interactions (5) | Least Interactions (5) |\n`;
+    markdown += `| --- | --- | --- | --- | --- | --- |\n`;
     for (const m of months) {
-        markdown += `| ${m.month} | ${m.daily_active_users_avg} | ${m.user_initiated_interaction_count} | ${m.most_active.join(', ')} | ${m.least_active.join(', ')} |\n`;
+        markdown += `| ${m.month} | ${m.daily_active_users_avg} | ${m.daily_interacting_users_avg} | ${m.user_initiated_interaction_count} | ${m.most_interactions.join(', ')} | ${m.least_interactions.join(', ')} |\n`;
     }
     markdown += '\n';
-    // Daily table
-    markdown += `## Daily\n\n`;
-    markdown += `| Date | Daily Active Users | User Initiated Interactions | Active Users | Inactive Users |\n`;
-    markdown += `| --- | --- | --- | --- | --- |\n`;
+    // Weekly table
+    const weekData = new Map();
     for (const day of days) {
-        markdown += `| ${day.day} | ${day.daily_active_users} | ${day.user_initiated_interaction_count} | ${day.active_users.join(', ')} | ${day.inactive_users.join(', ')} |\n`;
+        const week = getISOWeek(day.day);
+        const existing = weekData.get(week) || {
+            interactions: 0,
+            activeUsersWithInteractions: new Set(),
+            activeUsersWithoutInteractions: new Set(),
+            allUsers: new Set()
+        };
+        existing.interactions += day.user_initiated_interaction_count;
+        for (const u of day.active_users_with_interactions || []) {
+            existing.activeUsersWithInteractions.add(u);
+            existing.allUsers.add(u);
+        }
+        for (const u of day.active_users_without_interactions || []) {
+            existing.allUsers.add(u);
+            // Only add if not already in with-interactions for this week
+            if (!existing.activeUsersWithInteractions.has(u)) {
+                existing.activeUsersWithoutInteractions.add(u);
+            }
+        }
+        for (const u of day.inactive_users)
+            existing.allUsers.add(u);
+        weekData.set(week, existing);
     }
+    const weeks = [...weekData.keys()].sort().reverse();
+    markdown += `## Weekly\n\n`;
+    markdown += `| Week | Active Users with Interactions | Active Users without Interactions | User Initiated Interactions | Active Users with Interactions List | Active Users without Interactions List | Inactive Users |\n`;
+    markdown += `| --- | --- | --- | --- | --- | --- | --- |\n`;
+    for (const week of weeks) {
+        const data = weekData.get(week);
+        // Users who had interactions at some point in the week are removed from without-interactions
+        const withInteractions = [...data.activeUsersWithInteractions].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        const withoutInteractions = [...data.activeUsersWithoutInteractions]
+            .filter((u) => !data.activeUsersWithInteractions.has(u))
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        const allActive = new Set([
+            ...data.activeUsersWithInteractions,
+            ...data.activeUsersWithoutInteractions
+        ]);
+        const inactiveList = [...data.allUsers]
+            .filter((u) => !allActive.has(u))
+            .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+        markdown += `| ${week} | ${withInteractions.length} | ${withoutInteractions.length} | ${data.interactions} | ${withInteractions.join(', ')} | ${withoutInteractions.join(', ')} | ${inactiveList.join(', ')} |\n`;
+    }
+    markdown += '\n';
+    // Legend
+    markdown += `## Definitions\n\n`;
+    markdown += `| Term | Definition |\n`;
+    markdown += `| --- | --- |\n`;
+    markdown += `| **Active Users** | Users who had any Copilot activity (e.g. code completions, chat, CLI) on a given day, regardless of whether they initiated an interaction. |\n`;
+    markdown += `| **Interacting Users** | Subset of active users who initiated at least one interaction (prompt). Interactions include chat turns, inline suggestions explicitly triggered, and other prompts sent by the user. |\n`;
+    markdown += `| **Active Users without Interactions** | Users who had Copilot activity (e.g. received code completions) but did not initiate any interaction (prompt) during the period. |\n`;
+    markdown += `| **Inactive Users** | Users who had no Copilot activity at all during the period. |\n`;
+    markdown += `| **User Initiated Interactions** | The total number of interactions (prompts) initiated by users, as defined by the GitHub Copilot Metrics API field \`user_initiated_interaction_count\`. |\n`;
     markdown += '\n';
     return [{ filename: 'ai-adoption.md', content: markdown }];
+};
+
+/**
+ * Generates per-user AI prompt files for enablement coaching.
+ * Each file contains a structured prompt with usage data that can be
+ * fed to an AI to craft a personalized enablement message.
+ */
+const isWeekday = (dateStr) => {
+    const d = new Date(dateStr + 'T00:00:00Z');
+    const dow = d.getUTCDay();
+    return dow >= 1 && dow <= 5;
+};
+const median = (values) => {
+    if (values.length === 0)
+        return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+const buildUserProfile = (login, files, numDays) => {
+    let totalInteractions = 0;
+    let totalCodeGen = 0;
+    let totalCodeAccept = 0;
+    let locSuggestedAdd = 0;
+    let locAdded = 0;
+    let usedAgentDays = 0;
+    let usedChatDays = 0;
+    const featureMap = new Map();
+    const ideMap = new Map();
+    const modelMap = new Map();
+    for (const f of files) {
+        const day = f.day;
+        totalInteractions += f.user_initiated_interaction_count || 0;
+        totalCodeGen += f.code_generation_activity_count || 0;
+        totalCodeAccept += f.code_acceptance_activity_count || 0;
+        locSuggestedAdd += f.loc_suggested_to_add_sum || 0;
+        locAdded += f.loc_added_sum || 0;
+        if (f.used_agent)
+            usedAgentDays++;
+        if (f.used_chat)
+            usedChatDays++;
+        const features = f.totals_by_feature || [];
+        for (const feat of features) {
+            const name = feat.feature;
+            const count = feat.user_initiated_interaction_count || 0;
+            const existing = featureMap.get(name) || {
+                interactions: 0,
+                days: new Set()
+            };
+            existing.interactions += count;
+            existing.days.add(day);
+            featureMap.set(name, existing);
+        }
+        const ides = f.totals_by_ide || [];
+        for (const ide of ides) {
+            const name = ide.ide;
+            const count = ide.user_initiated_interaction_count || 0;
+            const existing = ideMap.get(name) || {
+                interactions: 0,
+                days: new Set()
+            };
+            existing.interactions += count;
+            existing.days.add(day);
+            ideMap.set(name, existing);
+        }
+        const models = f.totals_by_model_feature || [];
+        for (const m of models) {
+            const name = m.model;
+            const count = m.user_initiated_interaction_count || 0;
+            const existing = modelMap.get(name) || {
+                interactions: 0,
+                days: new Set()
+            };
+            existing.interactions += count;
+            existing.days.add(day);
+            modelMap.set(name, existing);
+        }
+    }
+    const toSorted = (map, mapFn) => [...map.entries()]
+        .map(([name, data]) => mapFn(name, data))
+        .sort((a, b) => b.interactions - a.interactions);
+    return {
+        login,
+        days_active: files.length,
+        total_interactions: totalInteractions,
+        avg_interactions_per_day: numDays > 0 ? parseFloat((totalInteractions / numDays).toFixed(1)) : 0,
+        total_code_generations: totalCodeGen,
+        total_code_acceptances: totalCodeAccept,
+        loc_suggested_to_add: locSuggestedAdd,
+        loc_added: locAdded,
+        used_agent_days: usedAgentDays,
+        used_chat_days: usedChatDays,
+        features: toSorted(featureMap, (feature, d) => ({
+            feature,
+            interactions: d.interactions,
+            days_used: d.days.size
+        })),
+        ides: toSorted(ideMap, (ide, d) => ({
+            ide,
+            interactions: d.interactions,
+            days_used: d.days.size
+        })),
+        models: toSorted(modelMap, (model, d) => ({
+            model,
+            interactions: d.interactions,
+            days_used: d.days.size
+        }))
+    };
+};
+const buildPromptMarkdown = (user, team) => {
+    let md = `# Enablement Prompt — ${user.login}\n\n`;
+    md += `[← Back to Index](../README.md)\n\n`;
+    md += `> This file contains a structured AI prompt with usage data for **${user.login}**.\n`;
+    md += `> Feed this entire document to an AI assistant to generate a personalized enablement message.\n\n`;
+    md += `---\n\n`;
+    md += `## Prompt\n\n`;
+    md += `You are a developer enablement coach helping teams adopt GitHub Copilot effectively. `;
+    md += `Your tone is encouraging, educational, and constructive — never judgmental or mandating. `;
+    md += `Focus on practical tips, quick wins, and celebrating progress.\n\n`;
+    md += `Using the data below, craft a personalized message for **${user.login}** that:\n\n`;
+    md += `1. Acknowledges their current usage and any strengths\n`;
+    md += `2. Gently highlights opportunities to grow (unused features, low-activity patterns)\n`;
+    md += `3. Provides 2-3 specific, actionable suggestions tailored to their profile\n`;
+    md += `4. Suggests team champions they could pair with or learn from\n`;
+    md += `5. Keeps the message concise (under 300 words) and human\n\n`;
+    md += `---\n\n`;
+    // User stats
+    md += `## User Data: ${user.login}\n\n`;
+    md += `### Activity Summary (last ${team.working_days} working days)\n\n`;
+    md += `| Metric | Value |\n`;
+    md += `| --- | --- |\n`;
+    md += `| Days active | ${user.days_active} / ${team.working_days} |\n`;
+    md += `| Total interactions (prompts) | ${user.total_interactions} |\n`;
+    md += `| Avg interactions / working day | ${user.avg_interactions_per_day} |\n`;
+    md += `| Code generation events | ${user.total_code_generations} |\n`;
+    md += `| Code acceptances | ${user.total_code_acceptances} |\n`;
+    md += `| Lines of code suggested (additions) | ${user.loc_suggested_to_add} |\n`;
+    md += `| Lines of code added | ${user.loc_added} |\n`;
+    md += `| Days using agent mode | ${user.used_agent_days} |\n`;
+    md += `| Days using chat | ${user.used_chat_days} |\n`;
+    md += '\n';
+    // Features
+    md += `### Features Used\n\n`;
+    if (user.features.length > 0) {
+        md += `| Feature | Interactions | Days Used |\n`;
+        md += `| --- | ---: | ---: |\n`;
+        for (const f of user.features) {
+            md += `| ${f.feature} | ${f.interactions} | ${f.days_used} |\n`;
+        }
+    }
+    else {
+        md += `No feature-level data recorded.\n`;
+    }
+    md += '\n';
+    // Features NOT used
+    const usedFeatures = new Set(user.features.map((f) => f.feature));
+    const unusedFeatures = team.all_features.filter((f) => !usedFeatures.has(f));
+    if (unusedFeatures.length > 0) {
+        md += `### Features Not Yet Tried\n\n`;
+        for (const f of unusedFeatures) {
+            md += `- ${f}\n`;
+        }
+        md += '\n';
+    }
+    // IDEs
+    md += `### IDEs Used\n\n`;
+    if (user.ides.length > 0) {
+        md += `| IDE | Interactions | Days Used |\n`;
+        md += `| --- | ---: | ---: |\n`;
+        for (const ide of user.ides) {
+            md += `| ${ide.ide} | ${ide.interactions} | ${ide.days_used} |\n`;
+        }
+    }
+    else {
+        md += `No IDE-level data recorded.\n`;
+    }
+    md += '\n';
+    // Models
+    if (user.models.length > 0) {
+        md += `### Models Used\n\n`;
+        md += `| Model | Interactions | Days Used |\n`;
+        md += `| --- | ---: | ---: |\n`;
+        for (const m of user.models) {
+            md += `| ${m.model} | ${m.interactions} | ${m.days_used} |\n`;
+        }
+        md += '\n';
+    }
+    // Team comparison
+    md += `---\n\n`;
+    md += `## Team Context\n\n`;
+    md += `| Metric | Value |\n`;
+    md += `| --- | --- |\n`;
+    md += `| Team size | ${team.total_users} users |\n`;
+    md += `| Working days in period | ${team.working_days} |\n`;
+    md += `| Team avg interactions / user | ${team.avg_interactions_per_user} |\n`;
+    md += `| Team median interactions / user | ${team.median_interactions_per_user} |\n`;
+    md += `| Team avg days active / user | ${team.avg_days_active} |\n`;
+    md += '\n';
+    // Champions
+    md += `### Champions (top 5 by interactions)\n\n`;
+    md += `These users could be good contacts for tips and pairing:\n\n`;
+    md += `| User | Interactions |\n`;
+    md += `| --- | ---: |\n`;
+    for (const c of team.champions) {
+        const marker = c.login === user.login ? ' ← (you)' : '';
+        md += `| ${c.login}${marker} | ${c.interactions} |\n`;
+    }
+    md += '\n';
+    return md;
+};
+const generateUserPrompts = (usersSourcePath, includeUsers = [], excludeUsers = []) => {
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    if (userFiles.length === 0) {
+        info('No user data found, skipping enablement prompts');
+        return [];
+    }
+    // Filter to recent 20 working days
+    const allDays = [...new Set(userFiles.map((f) => f.day))].sort();
+    const workingDays = allDays.filter((d) => isWeekday(d));
+    const recentWorkingDays = new Set(workingDays.slice(-20));
+    const numDays = recentWorkingDays.size;
+    // Group files by user (only recent working days)
+    const userFileMap = new Map();
+    for (const f of userFiles) {
+        if (!recentWorkingDays.has(f.day))
+            continue;
+        const login = f.user_login;
+        if (!userFileMap.has(login))
+            userFileMap.set(login, []);
+        userFileMap.get(login).push(f);
+    }
+    const logins = [...userFileMap.keys()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    // Build all profiles
+    const profiles = logins.map((login) => buildUserProfile(login, userFileMap.get(login), numDays));
+    // Also include users with no recent working-day data
+    const allLogins = [
+        ...new Set(userFiles.map((f) => f.user_login).filter(Boolean))
+    ].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    for (const login of allLogins) {
+        if (!userFileMap.has(login)) {
+            profiles.push(buildUserProfile(login, [], numDays));
+        }
+    }
+    profiles.sort((a, b) => a.login.toLowerCase().localeCompare(b.login.toLowerCase()));
+    // Compute team stats
+    const interactionValues = profiles.map((p) => p.total_interactions);
+    const totalTeamInteractions = interactionValues.reduce((a, b) => a + b, 0);
+    const allFeatures = [
+        ...new Set(profiles.flatMap((p) => p.features.map((f) => f.feature)))
+    ].sort();
+    const champions = [...profiles]
+        .sort((a, b) => b.total_interactions - a.total_interactions)
+        .slice(0, 5)
+        .map((p) => ({ login: p.login, interactions: p.total_interactions }));
+    const teamStats = {
+        total_users: profiles.length,
+        working_days: numDays,
+        avg_interactions_per_user: parseFloat(profiles.length > 0
+            ? (totalTeamInteractions / profiles.length).toFixed(1)
+            : '0'),
+        median_interactions_per_user: parseFloat(median(interactionValues).toFixed(1)),
+        avg_days_active: parseFloat(profiles.length > 0
+            ? (profiles.reduce((a, p) => a + p.days_active, 0) / profiles.length).toFixed(1)
+            : '0'),
+        champions,
+        all_features: allFeatures
+    };
+    // Generate one prompt file per user
+    const files = [];
+    for (const profile of profiles) {
+        const content = buildPromptMarkdown(profile, teamStats);
+        const slug = profile.login.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+        files.push({
+            filename: `prompts/${slug}.md`,
+            content
+        });
+    }
+    info(`Generated ${files.length} enablement prompt(s)`);
+    return files;
 };
 
 /**
@@ -66137,6 +66641,10 @@ const writeReportFiles = async (reportsPath, files) => {
     }
     for (const file of files) {
         const filePath = path.join(reportsPath, file.filename);
+        const fileDir = path.dirname(filePath);
+        if (!fs.existsSync(fileDir)) {
+            fs.mkdirSync(fileDir, { recursive: true });
+        }
         fs.writeFileSync(filePath, file.content, 'utf-8');
         info(`Report written to ${filePath}`);
     }
@@ -66151,47 +66659,168 @@ const writeReportFiles = async (reportsPath, files) => {
 
 /**
  * Orchestrates the report pipeline:
- * 1. Run transforms on source data to produce intermediate NDJSON files
+ * 1. Run transforms on users source data to produce intermediate NDJSON files
  * 2. Generate reports from the transformed data
  */
-const generateReports = async (storePath) => {
+const generateReports = async (storePath, includeUsers = [], excludeUsers = []) => {
     info('Running ETL pipeline for reports');
-    const orgSourcePath = path.join(storePath, 'source', 'organization');
-    const orgTransformPath = path.join(storePath, 'transform', 'organization');
     const usersSourcePath = path.join(storePath, 'source', 'users');
+    const transformPath = path.join(storePath, 'transform', 'organization');
     // Transform step
-    transformIdeInteractions(orgSourcePath, orgTransformPath);
-    transformFeatureInteractions(orgSourcePath, orgTransformPath);
-    transformFeatureAdoption(orgSourcePath, orgTransformPath, usersSourcePath);
-    transformModelAdoption(orgSourcePath, orgTransformPath, usersSourcePath);
-    transformDailyUsage(orgSourcePath, orgTransformPath, usersSourcePath);
+    transformIdeInteractions(usersSourcePath, transformPath, includeUsers, excludeUsers);
+    transformFeatureInteractions(usersSourcePath, transformPath, includeUsers, excludeUsers);
+    transformFeatureAdoption(usersSourcePath, transformPath, includeUsers, excludeUsers);
+    transformModelAdoption(usersSourcePath, transformPath, includeUsers, excludeUsers);
+    transformDailyUsage(usersSourcePath, transformPath, includeUsers, excludeUsers);
     // Report generation step
     const reportFiles = [];
-    reportFiles.push(...generateDailyUsageReport(orgTransformPath));
-    reportFiles.push(...generateIdeAdoptionReport(orgTransformPath));
-    reportFiles.push(...generateFeatureAdoptionReport(orgTransformPath));
-    reportFiles.push(...generatePerFeatureAdoptionReport(orgTransformPath));
-    reportFiles.push(...generateModelAdoptionReport(orgTransformPath));
-    reportFiles.push(...generatePerModelAdoptionReport(orgTransformPath));
+    reportFiles.push(...generateDailyUsageReport(transformPath));
+    reportFiles.push(...generateIdeAdoptionReport(transformPath));
+    reportFiles.push(...generateFeatureAdoptionReport(transformPath));
+    reportFiles.push(...generatePerFeatureAdoptionReport(transformPath));
+    reportFiles.push(...generateModelAdoptionReport(transformPath));
+    reportFiles.push(...generatePerModelAdoptionReport(transformPath));
+    reportFiles.push(...generatePerUserAdoptionReport(transformPath));
+    // Per-user enablement prompts (reads raw source data)
+    const promptFiles = generateUserPrompts(usersSourcePath, includeUsers, excludeUsers);
+    reportFiles.push(...promptFiles);
     if (reportFiles.length === 0) {
         info('No report content generated');
         return;
     }
+    // Determine included users from the filtered source data
+    const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
+    const includedUsers = [
+        ...new Set(userFiles.map((f) => f.user_login).filter((login) => !!login))
+    ].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    // Compute per-user interactions over the past 20 working days (Mon–Fri)
+    const allDays = [...new Set(userFiles.map((f) => f.day))].sort();
+    const workingDays = allDays.filter((d) => {
+        const dow = new Date(d + 'T00:00:00Z').getUTCDay();
+        return dow >= 1 && dow <= 5;
+    });
+    const recentWorkingDays = new Set(workingDays.slice(-20));
+    const userInteractions = new Map();
+    const userDayDetails = new Map();
+    for (const f of userFiles) {
+        const day = f.day;
+        if (!recentWorkingDays.has(day))
+            continue;
+        const login = f.user_login;
+        const count = f.user_initiated_interaction_count || 0;
+        userInteractions.set(login, (userInteractions.get(login) || 0) + count);
+        if (!userDayDetails.has(login))
+            userDayDetails.set(login, []);
+        userDayDetails
+            .get(login)
+            .push({ day, user_initiated_interaction_count: count });
+    }
+    // Sort each user's day details chronologically
+    for (const details of userDayDetails.values()) {
+        details.sort((a, b) => a.day.localeCompare(b.day));
+    }
+    let totalInteractions = 0;
+    for (const c of userInteractions.values())
+        totalInteractions += c;
+    const numDays = recentWorkingDays.size || 1;
+    // Build summary entries and write transform file
+    const summaryEntries = includedUsers.map((user) => {
+        const days = userDayDetails.get(user) || [];
+        const interactions = userInteractions.get(user) || 0;
+        const avg_per_day = parseFloat((interactions / numDays).toFixed(1));
+        const pct_of_total = parseFloat(totalInteractions > 0
+            ? ((interactions / totalInteractions) * 100).toFixed(1)
+            : '0.0');
+        return {
+            user,
+            days_active: days,
+            metrics: {
+                days_active_count: days.length,
+                total_interactions: interactions,
+                avg_interactions_per_day: avg_per_day,
+                pct_of_total_interactions: pct_of_total
+            }
+        };
+    });
+    const summaryFile = path.join(transformPath, 'people-summary.ndjson');
+    const summaryNdjson = summaryEntries
+        .map((entry) => JSON.stringify(entry))
+        .join('\n');
+    fs.writeFileSync(summaryFile, summaryNdjson, 'utf-8');
+    info(`Wrote ${summaryEntries.length} user(s) to ${summaryFile}`);
     const generatedAt = new Date().toISOString();
     let readme = `# Copilot Metrics Reports\n\n`;
     readme += `**Generated at:** ${generatedAt}\n\n`;
     readme += `Reference: [Copilot Usage Metrics](https://docs.github.com/en/copilot/reference/copilot-usage-metrics/copilot-usage-metrics)\n\n`;
-    readme += `## Available Reports\n\n`;
-    for (const file of reportFiles) {
+    readme += `## People Included\n\n`;
+    readme += `These reports cover **${includedUsers.length}** user(s) over the last **${recentWorkingDays.size}** working day(s):\n\n`;
+    readme += `| User | Days Active | Interactions (${recentWorkingDays.size}d) | Avg / Day | % of Total |\n`;
+    readme += `| --- | ---: | ---: | ---: | ---: |\n`;
+    for (const entry of summaryEntries) {
+        const m = entry.metrics;
+        readme += `| ${entry.user} | ${m.days_active_count} | ${m.total_interactions} | ${m.avg_interactions_per_day.toFixed(1)} | ${m.pct_of_total_interactions.toFixed(1)}% |\n`;
+    }
+    const totalAvg = (totalInteractions / numDays).toFixed(1);
+    readme += `| **Total** | | **${totalInteractions}** | **${totalAvg}** | **100.0%** |\n`;
+    if (includeUsers.length > 0) {
+        readme += `\n*Filtered by include list: ${includeUsers.join(', ')}*\n`;
+    }
+    else if (excludeUsers.length > 0) {
+        readme += `\n*Filtered by exclude list: ${excludeUsers.join(', ')}*\n`;
+    }
+    readme += `\n**Days Active:** Days with any AI activity from the user (prompting, code completion, etc.).\n\n`;
+    readme += `**Interactions:** Number of explicit prompts sent to Copilot (\`user_initiated_interaction_count\`). `;
+    readme += `Only counts messages or prompts actively sent to the model. `;
+    readme += `Does not include opening the chat panel, switching modes (e.g. ask, edit, plan, or agent), `;
+    readme += `using keyboard shortcuts to open the inline UI, or making configuration changes.\n`;
+    readme += `\n## Available Reports\n\n`;
+    const isPerBreakdown = (f) => f.startsWith('feature-adoption-') || f.startsWith('model-adoption-');
+    const isPrompt = (f) => f.startsWith('prompts/');
+    const mainFiles = reportFiles.filter((f) => !isPerBreakdown(f.filename) && !isPrompt(f.filename));
+    for (const file of mainFiles) {
         const title = file.content.split('\n')[0].replace(/^#+\s*/, '');
         readme += `- [${title}](${file.filename})\n`;
+    }
+    const perFeatureFiles = reportFiles.filter((f) => f.filename.startsWith('feature-adoption-'));
+    if (perFeatureFiles.length > 0) {
+        readme += `\n<details>\n<summary>Per Feature Breakdown (${perFeatureFiles.length} reports)</summary>\n\n`;
+        for (const file of perFeatureFiles) {
+            const title = file.content.split('\n')[0].replace(/^#+\s*/, '');
+            readme += `- [${title}](${file.filename})\n`;
+        }
+        readme += `\n</details>\n`;
+    }
+    const perModelFiles = reportFiles.filter((f) => f.filename.startsWith('model-adoption-'));
+    if (perModelFiles.length > 0) {
+        readme += `\n<details>\n<summary>Per Model Breakdown (${perModelFiles.length} reports)</summary>\n\n`;
+        for (const file of perModelFiles) {
+            const title = file.content.split('\n')[0].replace(/^#+\s*/, '');
+            readme += `- [${title}](${file.filename})\n`;
+        }
+        readme += `\n</details>\n`;
+    }
+    const userPromptFiles = reportFiles.filter((f) => isPrompt(f.filename));
+    if (userPromptFiles.length > 0) {
+        readme += `\n## Enablement Prompts\n\n`;
+        readme += `Per-user AI prompts for personalized enablement coaching.\n`;
+        readme += `Feed these to an AI assistant to generate tailored messages.\n\n`;
+        for (const file of userPromptFiles) {
+            const login = file.filename.replace('prompts/', '').replace('.md', '');
+            readme += `- [${login}](${file.filename})\n`;
+        }
     }
     reportFiles.unshift({ filename: 'README.md', content: readme });
     const reportsPath = path.join(storePath, 'report');
     await writeReportFiles(reportsPath, reportFiles);
 };
 
-const METRICS_TYPES = ['organization', 'users'];
+/**
+ * Parses a comma-separated input string into a trimmed, non-empty array of strings.
+ */
+const parseListInput = (input) => input
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 /**
  * The main function for the action.
  *
@@ -66203,8 +66832,9 @@ async function run() {
         const inputPath = getInput('path');
         const inputOrg = getInput('github_org');
         const inputSummaryReport = getInput('summary_report');
-        const inputMetrics = getInput('reports') || 'all';
         const lookbackDays = parseInt(getInput('lookback_days') || '100', 10);
+        const includeUsers = parseListInput(getInput('include_users'));
+        const excludeUsers = parseListInput(getInput('exclude_users'));
         // Simple API call to ensure the provided token is valid and display the associated username
         await getConnectedUser({ githubToken: inputGithubToken });
         let storePath = inputPath;
@@ -66213,38 +66843,17 @@ async function run() {
             storePath = await getCacheDirectory(`copilot-metrics-cache-${inputOrg}`);
         }
         info(`Metrics will be stored at: ${storePath}`);
-        const activeMetrics = inputMetrics === 'all'
-            ? [...METRICS_TYPES]
-            : inputMetrics
-                .split(',')
-                .map((r) => r.trim())
-                .filter((r) => METRICS_TYPES.includes(r));
-        if (activeMetrics.length === 0) {
-            warning(`No valid metrics types specified in "${inputMetrics}". Valid values: ${METRICS_TYPES.join(', ')}, all`);
-        }
-        // Collect all metrics for up to 28 days prior
-        for (const metric of activeMetrics) {
-            const metricsPath = path.join(storePath, 'source', metric);
-            info(`Collecting data for metrics type: ${metric}`);
-            if (metric === 'organization') {
-                await fetchMissingOrganizationMetrics({
-                    githubToken: inputGithubToken,
-                    org: inputOrg,
-                    storePath: metricsPath,
-                    lookbackDays
-                });
-            }
-            else if (metric === 'users') {
-                await fetchMissingUsersMetrics({
-                    githubToken: inputGithubToken,
-                    org: inputOrg,
-                    storePath: metricsPath,
-                    lookbackDays
-                });
-            }
-        }
+        // Fetch all user-level metrics
+        const usersPath = path.join(storePath, 'source', 'users');
+        info('Collecting data for user metrics');
+        await fetchMissingUsersMetrics({
+            githubToken: inputGithubToken,
+            org: inputOrg,
+            storePath: usersPath,
+            lookbackDays
+        });
         if (inputSummaryReport === 'true') {
-            await generateReports(storePath);
+            await generateReports(storePath, includeUsers, excludeUsers);
         }
         setOutput('path', storePath);
     }

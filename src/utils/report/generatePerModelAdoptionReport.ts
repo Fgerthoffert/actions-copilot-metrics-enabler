@@ -40,6 +40,17 @@ const loadTransformFile = (transformPath: string): ModelAdoptionDay[] => {
     .map((line) => JSON.parse(line) as ModelAdoptionDay)
 }
 
+const getISOWeek = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00Z')
+  const dayOfWeek = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  )
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
 export const generatePerModelAdoptionReport = (
   transformPath: string
 ): ReportFile[] => {
@@ -139,24 +150,55 @@ export const generatePerModelAdoptionReport = (
     }
     markdown += '\n'
 
-    // Daily table
-    markdown += `## Daily\n\n`
-    markdown += `| Date | Model Interactions | Total Interactions | % of Total | Active Users |\n`
-    markdown += `| --- | --- | --- | --- | --- |\n`
+    // Weekly table
+    const weekData = new Map<
+      string,
+      {
+        modelInteractions: number
+        totalInteractions: number
+        activeUsers: Set<string>
+      }
+    >()
 
     for (const day of days) {
+      const week = getISOWeek(day.day)
+      const existing = weekData.get(week) || {
+        modelInteractions: 0,
+        totalInteractions: 0,
+        activeUsers: new Set<string>()
+      }
+
       const modelEntry = day.models.find((m) => m.model === model)
-      const modelInteractions = modelEntry?.interactions || 0
+      existing.modelInteractions += modelEntry?.interactions || 0
+      existing.totalInteractions += day.total_interactions
+
+      if (modelEntry) {
+        for (const u of modelEntry.users) {
+          if (u.interactions > 0) existing.activeUsers.add(u.login)
+        }
+      }
+
+      weekData.set(week, existing)
+    }
+
+    const weeks = [...weekData.keys()].sort().reverse()
+
+    markdown += `## Weekly\n\n`
+    markdown += `| Week | Model Interactions | Total Interactions | % of Total | Active Users |\n`
+    markdown += `| --- | --- | --- | --- | --- |\n`
+
+    for (const week of weeks) {
+      const data = weekData.get(week)!
       const pct =
-        day.total_interactions > 0
-          ? Math.round((modelInteractions / day.total_interactions) * 100)
+        data.totalInteractions > 0
+          ? Math.round((data.modelInteractions / data.totalInteractions) * 100)
           : 0
 
-      const activeUsers = modelEntry
-        ? modelEntry.users.filter((u) => u.interactions > 0).map((u) => u.login)
-        : []
+      const activeList = [...data.activeUsers].sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase())
+      )
 
-      markdown += `| ${day.day} | ${modelInteractions} | ${day.total_interactions} | ${pct}% | ${activeUsers.join(', ')} |\n`
+      markdown += `| ${week} | ${data.modelInteractions} | ${data.totalInteractions} | ${pct}% | ${activeList.join(', ')} |\n`
     }
     markdown += '\n'
 

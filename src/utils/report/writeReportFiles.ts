@@ -22,6 +22,10 @@ export const writeReportFiles = async (
 
   for (const file of files) {
     const filePath = path.join(reportsPath, file.filename)
+    const fileDir = path.dirname(filePath)
+    if (!fs.existsSync(fileDir)) {
+      fs.mkdirSync(fileDir, { recursive: true })
+    }
     fs.writeFileSync(filePath, file.content, 'utf-8')
     core.info(`Report written to ${filePath}`)
   }

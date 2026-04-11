@@ -6,9 +6,15 @@ import * as core from '@actions/core'
 /**
  * Loads all per-user JSON files from date folders under storePath.
  * Expects structure: storePath/YYYY-MM-DD/YYYY-MM-DD-username.json
+ *
+ * Optionally filters by include/exclude user login lists.
+ * When includeUsers is non-empty, only those users are kept.
+ * When excludeUsers is non-empty, those users are removed.
  */
 export const loadUserDailyFiles = (
-  storePath: string
+  storePath: string,
+  includeUsers: string[] = [],
+  excludeUsers: string[] = []
 ): Record<string, unknown>[] => {
   const dateDirPattern = /^\d{4}-\d{2}-\d{2}$/
   const jsonPattern = /\.json$/
@@ -35,5 +41,23 @@ export const loadUserDailyFiles = (
   }
 
   core.info(`Loaded ${results.length} user daily file(s) for report generation`)
-  return results
+
+  let filtered = results
+  if (includeUsers.length > 0) {
+    filtered = filtered.filter((f) =>
+      includeUsers.includes(f.user_login as string)
+    )
+    core.info(
+      `Include filter applied: ${filtered.length} file(s) kept for ${includeUsers.length} user(s)`
+    )
+  } else if (excludeUsers.length > 0) {
+    filtered = filtered.filter(
+      (f) => !excludeUsers.includes(f.user_login as string)
+    )
+    core.info(
+      `Exclude filter applied: ${filtered.length} file(s) kept after removing ${excludeUsers.length} user(s)`
+    )
+  }
+
+  return filtered
 }

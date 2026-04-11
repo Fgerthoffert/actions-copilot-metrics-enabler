@@ -118,4 +118,56 @@ describe('loadUserDailyFiles', () => {
     const result = loadUserDailyFiles(tmpDir)
     expect(result).toEqual([])
   })
+
+  it('Filters by include list', () => {
+    const day1 = path.join(tmpDir, '2026-04-01')
+    fs.mkdirSync(day1)
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-alice.json'),
+      JSON.stringify({ user_login: 'alice', day: '2026-04-01' })
+    )
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-bob.json'),
+      JSON.stringify({ user_login: 'bob', day: '2026-04-01' })
+    )
+
+    const result = loadUserDailyFiles(tmpDir, ['alice'])
+    expect(result.length).toBe(1)
+    expect(result[0].user_login).toBe('alice')
+  })
+
+  it('Filters by exclude list', () => {
+    const day1 = path.join(tmpDir, '2026-04-01')
+    fs.mkdirSync(day1)
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-alice.json'),
+      JSON.stringify({ user_login: 'alice', day: '2026-04-01' })
+    )
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-bob.json'),
+      JSON.stringify({ user_login: 'bob', day: '2026-04-01' })
+    )
+
+    const result = loadUserDailyFiles(tmpDir, [], ['bob'])
+    expect(result.length).toBe(1)
+    expect(result[0].user_login).toBe('alice')
+  })
+
+  it('Include takes precedence over exclude', () => {
+    const day1 = path.join(tmpDir, '2026-04-01')
+    fs.mkdirSync(day1)
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-alice.json'),
+      JSON.stringify({ user_login: 'alice', day: '2026-04-01' })
+    )
+    fs.writeFileSync(
+      path.join(day1, '2026-04-01-bob.json'),
+      JSON.stringify({ user_login: 'bob', day: '2026-04-01' })
+    )
+
+    // Both filters set, include should take precedence
+    const result = loadUserDailyFiles(tmpDir, ['alice'], ['alice'])
+    expect(result.length).toBe(1)
+    expect(result[0].user_login).toBe('alice')
+  })
 })

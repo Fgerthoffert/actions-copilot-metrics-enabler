@@ -31,6 +31,48 @@ const loadTransformFile = (transformPath: string): FeatureInteractionDay[] => {
     .map((line) => JSON.parse(line) as FeatureInteractionDay)
 }
 
+const getISOWeek = (dateStr: string): string => {
+  const date = new Date(dateStr + 'T00:00:00Z')
+  const dayOfWeek = date.getUTCDay() || 7
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek)
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7
+  )
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
+}
+
+const FEATURE_DESCRIPTIONS: Record<string, string> = {
+  chat_panel_agent_mode:
+    'User-initiated interactions in the chat panel with agent mode selected.',
+  chat_panel_ask_mode:
+    'User-initiated interactions in the chat panel with ask mode selected.',
+  chat_panel_custom_mode:
+    'User-initiated interactions in the chat panel with a custom agent selected.',
+  chat_panel_edit_mode:
+    'User-initiated interactions in the chat panel with edit mode selected.',
+  chat_panel_plan_mode:
+    'User-initiated interactions in the chat panel with plan mode selected.',
+  chat_panel_unknown_mode:
+    'User-initiated interactions in the chat panel where the mode is unknown.',
+  chat_inline: 'User-initiated interactions using inline chat in the editor.',
+  code_completion: 'Inline code completion suggestions.',
+  agent_edit:
+    'Lines added and deleted when Copilot (in agent and edit mode) writes changes directly into files. Not included in suggestion-based metrics.'
+}
+
+const renderFeatureLegend = (features: string[]): string => {
+  let legend = `## Feature Legend\n\n`
+  legend += `| Feature | Description |\n`
+  legend += `| --- | --- |\n`
+  for (const f of features) {
+    const desc = FEATURE_DESCRIPTIONS[f] || 'No description available.'
+    legend += `| ${f} | ${desc} |\n`
+  }
+  legend += '\n'
+  return legend
+}
+
 const renderTable = (
   periodLabel: string,
   periods: string[],
@@ -109,8 +151,26 @@ export const generateFeatureAdoptionReport = (
 
   const months = [...monthMap.keys()].sort().reverse()
 
+  // Aggregate by ISO week, most recent first
+  const weekMap = new Map<string, Map<string, number>>()
+  for (const day of days) {
+    const week = getISOWeek(day.day)
+    if (!weekMap.has(week)) weekMap.set(week, new Map())
+    const wFeatureMap = weekMap.get(week)!
+    for (const entry of day.totals_by_feature) {
+      wFeatureMap.set(
+        entry.feature,
+        (wFeatureMap.get(entry.feature) || 0) +
+          entry.user_initiated_interaction_count
+      )
+    }
+  }
+
+  const weeks = [...weekMap.keys()].sort().reverse()
+
   let markdown = `# Feature Adoption — User Initiated Interactions\n\n`
   markdown += `[← Back to Index](README.md)\n\n`
+  markdown += renderFeatureLegend(features)
 
   // Monthly table
   markdown += `## Monthly\n\n`
@@ -121,27 +181,9 @@ export const generateFeatureAdoptionReport = (
     (month) => monthMap.get(month)!
   )
 
-  // Daily table
-  markdown += `## Daily\n\n`
-  markdown += renderTable(
-    'Date',
-    days.map((d) => d.day),
-    features,
-    (day) => {
-      const featureMap = new Map<string, number>()
-      const dayData = days.find((d) => d.day === day)
-      if (dayData) {
-        for (const entry of dayData.totals_by_feature) {
-          featureMap.set(
-            entry.feature,
-            (featureMap.get(entry.feature) || 0) +
-              entry.user_initiated_interaction_count
-          )
-        }
-      }
-      return featureMap
-    }
-  )
+  // Weekly table
+  markdown += `## Weekly\n\n`
+  markdown += renderTable('Week', weeks, features, (week) => weekMap.get(week)!)
 
   return [{ filename: 'feature-adoption.md', content: markdown }]
 }
