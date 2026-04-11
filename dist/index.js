@@ -66467,14 +66467,17 @@ const buildPromptMarkdown = (user, team) => {
     md += `---\n\n`;
     md += `## Prompt\n\n`;
     md += `You are a developer enablement coach helping teams adopt GitHub Copilot effectively. `;
-    md += `Your tone is encouraging, educational, and constructive — never judgmental or mandating. `;
+    md += `Your tone is warm, encouraging, and constructive — never judgmental or mandating. `;
+    md += `At the same time, be clear that AI-assisted development is a permanent shift in how software is built, `;
+    md += `not a passing trend. Every developer benefits from building these skills now rather than later. `;
     md += `Focus on practical tips, quick wins, and celebrating progress.\n\n`;
     md += `Using the data below, craft a personalized message for **${user.login}** that:\n\n`;
     md += `1. Acknowledges their current usage and any strengths\n`;
-    md += `2. Gently highlights opportunities to grow (unused features, low-activity patterns)\n`;
+    md += `2. Highlights concrete opportunities to grow (unused features, low-activity patterns)\n`;
     md += `3. Provides 2-3 specific, actionable suggestions tailored to their profile\n`;
     md += `4. Suggests team champions they could pair with or learn from\n`;
-    md += `5. Keeps the message concise (under 300 words) and human\n\n`;
+    md += `5. Reinforces that investing in AI fluency now pays off — these tools are becoming part of the everyday engineering toolkit\n`;
+    md += `6. Keeps the message concise (under 300 words) and human\n\n`;
     md += `---\n\n`;
     // User stats
     md += `## User Data: ${user.login}\n\n`;
@@ -66560,6 +66563,122 @@ const buildPromptMarkdown = (user, team) => {
     md += '\n';
     return md;
 };
+const buildTeamPromptMarkdown = (profiles, team) => {
+    let md = `# Enablement Prompt — Team Overview\n\n`;
+    md += `[← Back to Index](../README.md)\n\n`;
+    md += `> This file contains a structured AI prompt with team-wide usage data.\n`;
+    md += `> Feed this entire document to an AI assistant to generate a team enablement summary.\n\n`;
+    md += `---\n\n`;
+    md += `## Prompt\n\n`;
+    md += `You are a developer enablement coach helping teams adopt GitHub Copilot effectively. `;
+    md += `Your tone is warm, encouraging, and constructive — never judgmental or mandating. `;
+    md += `At the same time, be clear that AI-assisted development is a permanent shift in how software is built, `;
+    md += `not a passing trend. Every developer benefits from building these skills now rather than later. `;
+    md += `Focus on team-wide patterns, strengths, and areas for improvement.\n\n`;
+    md += `Using the data below, craft a team enablement summary that:\n\n`;
+    md += `1. Highlights the team's overall adoption level and strengths\n`;
+    md += `2. Identifies features or tools that are underused across the team\n`;
+    md += `3. Recognizes champions who are leading adoption and could mentor others\n`;
+    md += `4. Calls out team members who may benefit from pairing or coaching\n`;
+    md += `5. Provides 3-5 actionable recommendations for the team as a whole\n`;
+    md += `6. Reinforces that investing in AI fluency now pays off — these tools are becoming part of the everyday engineering toolkit\n`;
+    md += `7. Keeps the summary concise (under 500 words) and human\n\n`;
+    md += `---\n\n`;
+    // Team overview
+    md += `## Team Summary (last ${team.working_days} working days)\n\n`;
+    md += `| Metric | Value |\n`;
+    md += `| --- | --- |\n`;
+    md += `| Team size | ${team.total_users} |\n`;
+    md += `| Working days in period | ${team.working_days} |\n`;
+    md += `| Avg interactions / user | ${team.avg_interactions_per_user} |\n`;
+    md += `| Median interactions / user | ${team.median_interactions_per_user} |\n`;
+    md += `| Avg days active / user | ${team.avg_days_active} |\n`;
+    md += '\n';
+    // Feature adoption across team
+    const featureUserCounts = new Map();
+    const featureTotalInteractions = new Map();
+    for (const p of profiles) {
+        for (const f of p.features) {
+            featureUserCounts.set(f.feature, (featureUserCounts.get(f.feature) || 0) + 1);
+            featureTotalInteractions.set(f.feature, (featureTotalInteractions.get(f.feature) || 0) + f.interactions);
+        }
+    }
+    md += `### Feature Adoption\n\n`;
+    md += `| Feature | Users | % of Team | Total Interactions |\n`;
+    md += `| --- | ---: | ---: | ---: |\n`;
+    const featureRows = [...featureUserCounts.entries()].sort((a, b) => b[1] - a[1]);
+    for (const [feature, count] of featureRows) {
+        const pct = team.total_users > 0 ? ((count / team.total_users) * 100).toFixed(0) : '0';
+        md += `| ${feature} | ${count} | ${pct}% | ${featureTotalInteractions.get(feature) || 0} |\n`;
+    }
+    md += '\n';
+    // IDE adoption across team
+    const ideUserCounts = new Map();
+    for (const p of profiles) {
+        for (const ide of p.ides) {
+            ideUserCounts.set(ide.ide, (ideUserCounts.get(ide.ide) || 0) + 1);
+        }
+    }
+    md += `### IDE Adoption\n\n`;
+    md += `| IDE | Users | % of Team |\n`;
+    md += `| --- | ---: | ---: |\n`;
+    const ideRows = [...ideUserCounts.entries()].sort((a, b) => b[1] - a[1]);
+    for (const [ide, count] of ideRows) {
+        const pct = team.total_users > 0 ? ((count / team.total_users) * 100).toFixed(0) : '0';
+        md += `| ${ide} | ${count} | ${pct}% |\n`;
+    }
+    md += '\n';
+    // Per-user breakdown
+    const sorted = [...profiles].sort((a, b) => b.total_interactions - a.total_interactions);
+    md += `### Per-User Breakdown\n\n`;
+    md += `| User | Days Active | Interactions | Avg / Day | Features Used |\n`;
+    md += `| --- | ---: | ---: | ---: | ---: |\n`;
+    for (const p of sorted) {
+        md += `| ${p.login} | ${p.days_active} | ${p.total_interactions} | ${p.avg_interactions_per_day} | ${p.features.length} |\n`;
+    }
+    md += '\n';
+    // Champions
+    md += `### Champions (top 5 by interactions)\n\n`;
+    md += `| User | Interactions |\n`;
+    md += `| --- | ---: |\n`;
+    for (const c of team.champions) {
+        md += `| ${c.login} | ${c.interactions} |\n`;
+    }
+    md += '\n';
+    // Users who could use help
+    const lowActivity = sorted
+        .filter((p) => p.total_interactions < team.median_interactions_per_user)
+        .sort((a, b) => a.total_interactions - b.total_interactions);
+    if (lowActivity.length > 0) {
+        md += `### Users Below Median Activity\n\n`;
+        md += `These team members may benefit from pairing sessions or coaching:\n\n`;
+        md += `| User | Days Active | Interactions | Features Used |\n`;
+        md += `| --- | ---: | ---: | ---: |\n`;
+        for (const p of lowActivity) {
+            md += `| ${p.login} | ${p.days_active} | ${p.total_interactions} | ${p.features.length} |\n`;
+        }
+        md += '\n';
+    }
+    // Unused features per user
+    const usersWithUnused = [];
+    for (const p of profiles) {
+        const used = new Set(p.features.map((f) => f.feature));
+        const unused = team.all_features.filter((f) => !used.has(f));
+        if (unused.length > 0) {
+            usersWithUnused.push({ login: p.login, unused });
+        }
+    }
+    if (usersWithUnused.length > 0) {
+        md += `### Feature Gaps by User\n\n`;
+        md += `| User | Unused Features |\n`;
+        md += `| --- | --- |\n`;
+        for (const entry of usersWithUnused) {
+            md += `| ${entry.login} | ${entry.unused.join(', ')} |\n`;
+        }
+        md += '\n';
+    }
+    return md;
+};
 const generateUserPrompts = (usersSourcePath, includeUsers = [], excludeUsers = []) => {
     const userFiles = loadUserDailyFiles(usersSourcePath, includeUsers, excludeUsers);
     if (userFiles.length === 0) {
@@ -66627,6 +66746,11 @@ const generateUserPrompts = (usersSourcePath, includeUsers = [], excludeUsers = 
             content
         });
     }
+    // Generate team-wide prompt
+    files.push({
+        filename: 'prompts/team.md',
+        content: buildTeamPromptMarkdown(profiles, teamStats)
+    });
     info(`Generated ${files.length} enablement prompt(s)`);
     return files;
 };
@@ -66662,10 +66786,10 @@ const writeReportFiles = async (reportsPath, files) => {
  * 1. Run transforms on users source data to produce intermediate NDJSON files
  * 2. Generate reports from the transformed data
  */
-const generateReports = async (storePath, includeUsers = [], excludeUsers = []) => {
+const generateReports = async (sourcePath, reportPath, includeUsers = [], excludeUsers = []) => {
     info('Running ETL pipeline for reports');
-    const usersSourcePath = path.join(storePath, 'source', 'users');
-    const transformPath = path.join(storePath, 'transform', 'organization');
+    const usersSourcePath = path.join(sourcePath, 'source', 'users');
+    const transformPath = path.join(reportPath, 'transform', 'organization');
     // Transform step
     transformIdeInteractions(usersSourcePath, transformPath, includeUsers, excludeUsers);
     transformFeatureInteractions(usersSourcePath, transformPath, includeUsers, excludeUsers);
@@ -66802,15 +66926,21 @@ const generateReports = async (storePath, includeUsers = [], excludeUsers = []) 
     const userPromptFiles = reportFiles.filter((f) => isPrompt(f.filename));
     if (userPromptFiles.length > 0) {
         readme += `\n## Enablement Prompts\n\n`;
-        readme += `Per-user AI prompts for personalized enablement coaching.\n`;
+        readme += `AI prompts for enablement coaching.\n`;
         readme += `Feed these to an AI assistant to generate tailored messages.\n\n`;
+        const teamPrompt = userPromptFiles.find((f) => f.filename === 'prompts/team.md');
+        if (teamPrompt) {
+            readme += `- [**Team Overview**](prompts/team.md)\n`;
+        }
         for (const file of userPromptFiles) {
+            if (file.filename === 'prompts/team.md')
+                continue;
             const login = file.filename.replace('prompts/', '').replace('.md', '');
             readme += `- [${login}](${file.filename})\n`;
         }
     }
     reportFiles.unshift({ filename: 'README.md', content: readme });
-    const reportsPath = path.join(storePath, 'report');
+    const reportsPath = path.join(reportPath, 'report');
     await writeReportFiles(reportsPath, reportFiles);
 };
 
@@ -66830,6 +66960,7 @@ async function run() {
     try {
         const inputGithubToken = getInput('github_token');
         const inputPath = getInput('path');
+        const inputReportPath = getInput('report_path');
         const inputOrg = getInput('github_org');
         const inputSummaryReport = getInput('summary_report');
         const lookbackDays = parseInt(getInput('lookback_days') || '100', 10);
@@ -66853,7 +66984,8 @@ async function run() {
             lookbackDays
         });
         if (inputSummaryReport === 'true') {
-            await generateReports(storePath, includeUsers, excludeUsers);
+            const reportPath = inputReportPath || storePath;
+            await generateReports(storePath, reportPath, includeUsers, excludeUsers);
         }
         setOutput('path', storePath);
     }

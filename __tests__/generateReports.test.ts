@@ -76,7 +76,7 @@ describe('generateReports', () => {
       ]
     })
 
-    await generateReports(tmpDir)
+    await generateReports(tmpDir, tmpDir)
 
     const reportDir = path.join(tmpDir, 'report')
     expect(fs.existsSync(reportDir)).toBe(true)
@@ -120,7 +120,7 @@ describe('generateReports', () => {
       ]
     })
 
-    await generateReports(tmpDir, ['alice'], [])
+    await generateReports(tmpDir, tmpDir, ['alice'], [])
 
     const readme = fs.readFileSync(
       path.join(tmpDir, 'report', 'README.md'),
@@ -136,10 +136,60 @@ describe('generateReports', () => {
     const usersDir = path.join(tmpDir, 'source', 'users')
     fs.mkdirSync(usersDir, { recursive: true })
 
-    await generateReports(tmpDir)
+    await generateReports(tmpDir, tmpDir)
 
     // No report dir should be created
     const reportDir = path.join(tmpDir, 'report')
     expect(fs.existsSync(reportDir)).toBe(false)
+  })
+
+  it('Writes transforms and reports to separate report_path', async () => {
+    const usersDir = path.join(tmpDir, 'source', 'users')
+    fs.mkdirSync(usersDir, { recursive: true })
+
+    const reportRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'test-gen-report-path-')
+    )
+
+    writeUserDay(usersDir, '2026-04-01', 'alice', {
+      user_initiated_interaction_count: 200,
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 200 }],
+      totals_by_feature: [
+        { feature: 'chat', user_initiated_interaction_count: 200 }
+      ],
+      totals_by_model_feature: [
+        {
+          model: 'gpt-4o',
+          feature: 'chat',
+          user_initiated_interaction_count: 200
+        }
+      ]
+    })
+
+    await generateReports(tmpDir, reportRoot)
+
+    // Transforms should be under reportRoot, not tmpDir
+    expect(
+      fs.existsSync(
+        path.join(reportRoot, 'transform', 'organization', 'daily-usage.ndjson')
+      )
+    ).toBe(true)
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, 'transform', 'organization', 'daily-usage.ndjson')
+      )
+    ).toBe(false)
+
+    // Reports should be under reportRoot
+    const reportDir = path.join(reportRoot, 'report')
+    expect(fs.existsSync(reportDir)).toBe(true)
+    expect(fs.readdirSync(reportDir)).toContain('README.md')
+
+    // Source data should remain under tmpDir only
+    expect(
+      fs.existsSync(path.join(tmpDir, 'source', 'users', '2026-04-01'))
+    ).toBe(true)
+
+    fs.rmSync(reportRoot, { recursive: true, force: true })
   })
 })

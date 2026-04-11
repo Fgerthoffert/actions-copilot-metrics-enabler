@@ -86,7 +86,8 @@ A `README.md` index is generated alongside the reports with links to each file.
 | ---------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `github_token`   | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics |
 | `github_org`     | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                                                         |
-| `path`           | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                                             |
+| `path`           | No       | `''`    | Local path for storing source API data (daily JSON files). If empty, a temporary cache directory is used                     |
+| `report_path`    | No       | `''`    | Path for transforms and reports. Allows separate report runs sharing the same source data. Defaults to `path` when empty     |
 | `summary_report` | No       | `false` | Set to `'true'` to generate adoption reports and enablement prompts                                                          |
 | `include_users`  | No       | `''`    | Comma-separated list of user logins to include in reports. When set, only these users appear in transforms and reports       |
 | `exclude_users`  | No       | `''`    | Comma-separated list of user logins to exclude from reports. Ignored if `include_users` is set                               |
@@ -176,6 +177,10 @@ copilot-metrics/
     │   └── bob.md
     └── ...
 ```
+
+When `report_path` is set, `transform/` and `report/` are written under
+`report_path` instead of under `path`. The `source/` directory always stays
+under `path`.
 
 ## License
 

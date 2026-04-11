@@ -25,6 +25,7 @@ export async function run(): Promise<void> {
   try {
     const inputGithubToken = core.getInput('github_token')
     const inputPath = core.getInput('path')
+    const inputReportPath = core.getInput('report_path')
     const inputOrg = core.getInput('github_org')
     const inputSummaryReport = core.getInput('summary_report')
     const lookbackDays = parseInt(core.getInput('lookback_days') || '100', 10)
@@ -55,7 +56,8 @@ export async function run(): Promise<void> {
     })
 
     if (inputSummaryReport === 'true') {
-      await generateReports(storePath, includeUsers, excludeUsers)
+      const reportPath = inputReportPath || storePath
+      await generateReports(storePath, reportPath, includeUsers, excludeUsers)
     }
 
     core.setOutput('path', storePath)

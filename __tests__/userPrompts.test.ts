@@ -86,12 +86,14 @@ describe('generateUserPrompts', () => {
     })
 
     const result = generateUserPrompts(tmpDir)
-    expect(result.length).toBe(2)
+    expect(result.length).toBe(3)
 
     const aliceFile = result.find((r) => r.filename === 'prompts/alice.md')
     const bobFile = result.find((r) => r.filename === 'prompts/bob.md')
+    const teamFile = result.find((r) => r.filename === 'prompts/team.md')
     expect(aliceFile).toBeDefined()
     expect(bobFile).toBeDefined()
+    expect(teamFile).toBeDefined()
   })
 
   it('Includes user activity data in the prompt', () => {
@@ -206,8 +208,9 @@ describe('generateUserPrompts', () => {
     })
 
     const result = generateUserPrompts(tmpDir, ['alice'], [])
-    expect(result.length).toBe(1)
-    expect(result[0].filename).toBe('prompts/alice.md')
+    expect(result.length).toBe(2)
+    expect(result.find((r) => r.filename === 'prompts/alice.md')).toBeDefined()
+    expect(result.find((r) => r.filename === 'prompts/team.md')).toBeDefined()
   })
 
   it('Only counts recent working days', () => {
@@ -231,10 +234,75 @@ describe('generateUserPrompts', () => {
     })
 
     const result = generateUserPrompts(tmpDir)
-    const md = result[0].content
+    const alicePrompt = result.find((r) => r.filename === 'prompts/alice.md')!
+    const md = alicePrompt.content
 
     // Only Monday data should be counted
     expect(md).toContain('Total interactions (prompts) | 20')
     expect(md).toContain('Days active | 1')
+  })
+
+  it('Generates a team prompt with overview data', () => {
+    writeUserDay(tmpDir, '2026-04-01', 'alice', {
+      user_initiated_interaction_count: 80,
+      code_generation_activity_count: 0,
+      code_acceptance_activity_count: 0,
+      totals_by_feature: [
+        {
+          feature: 'chat_panel_agent_mode',
+          user_initiated_interaction_count: 50
+        },
+        { feature: 'code_completion', user_initiated_interaction_count: 30 }
+      ],
+      totals_by_ide: [{ ide: 'vscode', user_initiated_interaction_count: 80 }],
+      totals_by_model_feature: []
+    })
+    writeUserDay(tmpDir, '2026-04-01', 'bob', {
+      user_initiated_interaction_count: 20,
+      code_generation_activity_count: 0,
+      code_acceptance_activity_count: 0,
+      totals_by_feature: [
+        { feature: 'code_completion', user_initiated_interaction_count: 20 }
+      ],
+      totals_by_ide: [
+        { ide: 'jetbrains', user_initiated_interaction_count: 20 }
+      ],
+      totals_by_model_feature: []
+    })
+
+    const result = generateUserPrompts(tmpDir)
+    const teamPrompt = result.find((r) => r.filename === 'prompts/team.md')!
+    expect(teamPrompt).toBeDefined()
+    const md = teamPrompt.content
+
+    expect(md).toContain('# Enablement Prompt — Team Overview')
+    expect(md).toContain('## Team Summary')
+    expect(md).toContain('Team size | 2')
+
+    // Feature adoption table
+    expect(md).toContain('### Feature Adoption')
+    expect(md).toContain('code_completion')
+    expect(md).toContain('chat_panel_agent_mode')
+
+    // IDE adoption table
+    expect(md).toContain('### IDE Adoption')
+    expect(md).toContain('vscode')
+    expect(md).toContain('jetbrains')
+
+    // Per-user breakdown
+    expect(md).toContain('### Per-User Breakdown')
+    expect(md).toContain('alice')
+    expect(md).toContain('bob')
+
+    // Champions
+    expect(md).toContain('### Champions')
+
+    // Users below median
+    expect(md).toContain('### Users Below Median Activity')
+    expect(md).toContain('bob')
+
+    // Feature gaps
+    expect(md).toContain('### Feature Gaps by User')
+    expect(md).toContain('chat_panel_agent_mode')
   })
 })

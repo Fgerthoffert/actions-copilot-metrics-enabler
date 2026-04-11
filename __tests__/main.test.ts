@@ -104,6 +104,7 @@ describe('main.ts', () => {
 
     expect(generateReports).toHaveBeenCalledWith(
       '/tmp/metrics',
+      '/tmp/metrics',
       ['alice', 'bob'],
       []
     )
@@ -113,6 +114,26 @@ describe('main.ts', () => {
     await run()
 
     expect(generateReports).not.toHaveBeenCalled()
+  })
+
+  it('Uses report_path for reports when provided', async () => {
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'github_token') return 'fake-token'
+      if (name === 'github_org') return 'my-org'
+      if (name === 'path') return '/tmp/metrics'
+      if (name === 'report_path') return '/tmp/reports'
+      if (name === 'summary_report') return 'true'
+      return ''
+    })
+
+    await run()
+
+    expect(generateReports).toHaveBeenCalledWith(
+      '/tmp/metrics',
+      '/tmp/reports',
+      [],
+      []
+    )
   })
 
   it('Sets a failed status on error', async () => {
