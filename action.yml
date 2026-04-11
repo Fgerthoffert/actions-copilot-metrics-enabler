@@ -18,8 +18,16 @@ inputs:
     required: true
   path:
     description:
-      Local path where previous JSON files are stored and where new ones. If
-      none provided, a temporary directory will be used and passed as output.
+      Local path for storing source API data (daily JSON files). If none
+      provided, a temporary directory will be used and passed as output.
+    default: ''
+    required: false
+  report_path:
+    description:
+      Local path for storing transforms and report files. When set, transforms
+      (NDJSON) and Markdown reports are written here instead of under `path`.
+      This allows multiple runs with different user filters to share the same
+      source data while writing reports to separate locations.
     default: ''
     required: false
   summary_report:

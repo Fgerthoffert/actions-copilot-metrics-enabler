@@ -27,14 +27,15 @@ import { writeReportFiles } from './writeReportFiles.js'
 import type { ReportFile } from './writeReportFiles.js'
 
 export const generateReports = async (
-  storePath: string,
+  sourcePath: string,
+  reportPath: string,
   includeUsers: string[] = [],
   excludeUsers: string[] = []
 ): Promise<void> => {
   core.info('Running ETL pipeline for reports')
 
-  const usersSourcePath = path.join(storePath, 'source', 'users')
-  const transformPath = path.join(storePath, 'transform', 'organization')
+  const usersSourcePath = path.join(sourcePath, 'source', 'users')
+  const transformPath = path.join(reportPath, 'transform', 'organization')
 
   // Transform step
   transformIdeInteractions(
@@ -235,9 +236,18 @@ export const generateReports = async (
   const userPromptFiles = reportFiles.filter((f) => isPrompt(f.filename))
   if (userPromptFiles.length > 0) {
     readme += `\n## Enablement Prompts\n\n`
-    readme += `Per-user AI prompts for personalized enablement coaching.\n`
+    readme += `AI prompts for enablement coaching.\n`
     readme += `Feed these to an AI assistant to generate tailored messages.\n\n`
+
+    const teamPrompt = userPromptFiles.find(
+      (f) => f.filename === 'prompts/team.md'
+    )
+    if (teamPrompt) {
+      readme += `- [**Team Overview**](prompts/team.md)\n`
+    }
+
     for (const file of userPromptFiles) {
+      if (file.filename === 'prompts/team.md') continue
       const login = file.filename.replace('prompts/', '').replace('.md', '')
       readme += `- [${login}](${file.filename})\n`
     }
@@ -245,6 +255,6 @@ export const generateReports = async (
 
   reportFiles.unshift({ filename: 'README.md', content: readme })
 
-  const reportsPath = path.join(storePath, 'report')
+  const reportsPath = path.join(reportPath, 'report')
   await writeReportFiles(reportsPath, reportFiles)
 }
