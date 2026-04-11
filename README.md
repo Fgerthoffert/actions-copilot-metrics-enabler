@@ -40,8 +40,8 @@
   feature/IDE/model usage, unused features, and team context (averages, median,
   champions). Feed these to an AI assistant to generate personalized coaching
   messages.
-- **User filtering** — Include or exclude specific users from all transforms
-  and reports via `include_users` / `exclude_users` inputs.
+- **User filtering** — Include or exclude specific users from all transforms and
+  reports via `include_users` / `exclude_users` inputs.
 - **Weekday-aware averages** — Monthly averages are computed over weekdays only
   (Mon–Fri), giving a more accurate picture of working-day usage.
 - **Safe incremental collection** — Only fetches data for dates that are
@@ -67,14 +67,14 @@ Markdown reports inside the `report/` directory:
 
 | Report                   | File(s)                         | Description                                                                                                          |
 | ------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **AI Adoption**          | `ai-adoption.md`                | Active vs interacting users and interaction counts, monthly and weekly, with user lists per category                  |
-| **IDE Adoption**         | `ide-adoption.md`               | User-initiated interactions broken down by IDE, monthly and weekly                                                    |
-| **Feature Adoption**     | `feature-adoption.md`           | Overview of interactions by feature (code completions, chat, etc.), monthly and weekly                                |
+| **AI Adoption**          | `ai-adoption.md`                | Active vs interacting users and interaction counts, monthly and weekly, with user lists per category                 |
+| **IDE Adoption**         | `ide-adoption.md`               | User-initiated interactions broken down by IDE, monthly and weekly                                                   |
+| **Feature Adoption**     | `feature-adoption.md`           | Overview of interactions by feature (code completions, chat, etc.), monthly and weekly                               |
 | **Per-Feature Adoption** | `feature-adoption-<feature>.md` | One report per feature with user breakdowns (top/bottom 5, active users per week)                                    |
-| **Model Adoption**       | `model-adoption.md`             | Overview of interactions by AI model with "Others" grouping (<5%), monthly and weekly                                 |
+| **Model Adoption**       | `model-adoption.md`             | Overview of interactions by AI model with "Others" grouping (<5%), monthly and weekly                                |
 | **Per-Model Adoption**   | `model-adoption-<model>.md`     | One report per model with user breakdowns (top/bottom 5, active users per week)                                      |
-| **Per-User Adoption**    | `per-user-adoption.md`          | Per-user monthly table with average daily interactions (weekdays), total interactions, and per-feature breakdown      |
-| **Enablement Prompts**   | `prompts/<login>.md`            | Per-user AI prompt files with activity data, feature/IDE/model usage, unused features, and team context for coaching  |
+| **Per-User Adoption**    | `per-user-adoption.md`          | Per-user monthly table with average daily interactions (weekdays), total interactions, and per-feature breakdown     |
+| **Enablement Prompts**   | `prompts/<login>.md`            | Per-user AI prompt files with activity data, feature/IDE/model usage, unused features, and team context for coaching |
 
 A `README.md` index is generated alongside the reports with links to each file.
 
@@ -82,15 +82,15 @@ A `README.md` index is generated alongside the reports with links to each file.
 
 ### Inputs
 
-| Input            | Required | Default | Description                                                                                                                  |
-| ---------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `github_token`   | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics |
-| `github_org`     | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                                                         |
-| `path`           | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                                              |
-| `summary_report` | No       | `false` | Set to `'true'` to generate adoption reports and enablement prompts                                                          |
-| `include_users`  | No       | `''`    | Comma-separated list of user logins to include in reports. When set, only these users appear in transforms and reports        |
-| `exclude_users`  | No       | `''`    | Comma-separated list of user logins to exclude from reports. Ignored if `include_users` is set                                |
-| `lookback_days`  | No       | `100`   | Number of days to look back in history for missing data                                                                      |
+| Input            | Required | Default | Description                                                                                                                    |
+| ---------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `github_token`   | Yes      | —       | A GitHub token with the `manage_billing:copilot` or `read:org` scope (classic PAT) or fine-grained access to Copilot metrics   |
+| `github_org`     | Yes      | —       | The GitHub organization to fetch Copilot metrics for                                                                           |
+| `path`           | No       | `''`    | Local path for storing JSON files. If empty, a temporary cache directory is used                                               |
+| `summary_report` | No       | `false` | Set to `'true'` to generate adoption reports and enablement prompts                                                            |
+| `include_users`  | No       | `''`    | Comma-separated list of user logins to include in reports. When set, only these users appear in transforms and reports         |
+| `exclude_users`  | No       | `''`    | Comma-separated list of user logins to exclude from reports. Ignored if `include_users` is set                                 |
+| `lookback_days`  | No       | `100`   | Number of days to look back in history for missing data                                                                        |
 
 ### Outputs
 
