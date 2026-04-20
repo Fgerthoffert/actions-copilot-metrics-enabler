@@ -1,7 +1,7 @@
 name: Copilot Metrics Enabler
 description:
-  A GitHub Action that retrieves GitHub Copilot usage metrics from the API and
-  organizes them to facilitate analysis and enablement.
+  GitHub Action that fetches Copilot usage metrics via API and structures them 
+  for analysis and enablement.
 author: Francois Gerthoffert
 
 branding:
